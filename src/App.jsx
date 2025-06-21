@@ -1,13 +1,14 @@
 // src/App.jsx
-// This version combines all necessary components and data into a single file
-// to resolve persistent "Could not resolve" import errors.
+// This version introduces a multi-page structure using state for navigation
+// It includes placeholders for MRP and Social Media Hub pages.
+// NOW INCLUDES MATERIAL MANAGEMENT FUNCTIONALITY WITH FIRESTORE, USING YOUR SPECIFIC HEADERS.
 
 import React, { useState, useEffect } from 'react';
 
-// Firebase imports (still external, as they are npm packages)
+// Firebase imports
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore'; // Import Firestore if you plan to use it later
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, onSnapshot } from 'firebase/firestore'; 
 
 // Define a custom color palette inspired by the logo's dark green
 const colors = {
@@ -21,11 +22,11 @@ const colors = {
 };
 
 
-// --- INLINED: dashboardCardsData (originally from src/dashboardData.js) ---
+// --- dashboardCardsData ---
 const dashboardCardsData = [
-  // --- Sidebar Cards ---
+  // --- Sidebar Cards --- (These are intentionally kept to essential links)
   {
-    id: 'sidebar-gmail', // Unique ID for the card
+    id: 'sidebar-gmail',
     title: 'Gmail',
     description: 'Manage business emails.',
     icon: "M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 17.25V6.75M21.75 6.75a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6.75m18.75 0v2.625a2.25 2.25 0 0 1-2.25 2.25H5.25a2.25 2.25 0 0 1-2.25-2.25V6.75m18.75 0a3.75 3.75 0 0 0-3.75-3.75H9.75a3.75 3.75 0 0 0-3.75 3.75m6.75 0a5.25 5.25 0 0 0-5.25 5.25v2.25m-3.75 7.5v-2.25m11.25 7.5v-2.25m-6.75 1.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z",
@@ -34,7 +35,7 @@ const dashboardCardsData = [
     iconBgColor: colors.mediumGreen,
     textColor: colors.offWhite,
     descColor: colors.lightGreen,
-    location: 'sidebar' // Custom property to indicate location
+    location: 'sidebar'
   },
   {
     id: 'sidebar-chat',
@@ -61,13 +62,14 @@ const dashboardCardsData = [
     location: 'sidebar'
   },
 
-  // --- Main Content Cards ---
+
+  // --- Main Content Cards --- (These include internal navigation)
   {
     id: 'main-financial-tracker',
     title: 'Financial Operations Tracker',
     description: 'Your centralized sheet for cash flow, costs & transfers.',
     icon: "M19.5 14.25v-2.625A3.375 3.375 0 0 0 16.125 8.25H15V6h3.75a3.375 3.375 0 0 1 3.375 3.375v2.625a3.375 3.375 0 0 1-3.375 3.375H15a2.25 2.25 0 0 1-2.25-2.25V10.5a2.25 2.25 0 0 1 2.25-2.25h1.125A2.25 2.25 0 0 1 18 10.5v1.125m-6.75-9.375a9 9 0 1 1-9 9m9-9a9 9 0 0 0-9 9m.375 1.25a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
-    link: "#", // Placeholder
+    link: "#", 
     isPlaceholder: true,
     cardBgColor: colors.mediumGreen,
     iconBgColor: colors.darkGreen,
@@ -92,9 +94,9 @@ const dashboardCardsData = [
     id: 'main-erp-mrp',
     title: 'ERP/MRP System',
     description: 'Automate manufacturing costs & inventory.',
-    icon: "M19.5 14.25v-2.625A3.375 3.375 0 0 0 16.125 8.25H15V6h3.75a3.375 3.375 0 0 1 3.375 3.375v2.625a3.375 3.375 0 0 1-3.375 3.375H15a2.25 2.25 0 0 1-2.25-2.25V10.5a2.25 2.25 0 0 1 2.25-2.25h1.125A2.25 2.25 0 0 1 18 10.5v1.125m-6.75-9.375a9 9 0 1 1-9 9m9-9a9 9 0 0 0-9 9m.375 1.25a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
-    link: "#", // Placeholder
-    isPlaceholder: true,
+    icon: "M12 21a9 9 0 0 0 9-9c0-.73-.09-1.44-.26-2.12M15 15a3 3 0 0 1-3 3c-1.44 0-2.73-.56-3.75-1.47M3 11.25a9 9 0 0 1 18 0c0 .73-.09 1.44-.26 2.12M9 9a3 3 0 0 0 3-3c1.44 0 2.73.56 3.75 1.47M4.5 7.75v3.5a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75H4.5ZM19.5 7.75v3.5a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-.75ZM9 15.75a.75.75 0 0 0 0 1.5h6a.75.75 0 0 0 0-1.5h-6Z", // Manufacturing icon
+    link: "mrp", 
+    isPlaceholder: false, 
     cardBgColor: colors.mediumGreen,
     iconBgColor: colors.darkGreen,
     textColor: colors.offWhite,
@@ -106,8 +108,8 @@ const dashboardCardsData = [
     title: 'AI Social Media Hub',
     description: 'Generate content & manage social media.',
     icon: "M18 1.5c2.982 0 5.467 2.225 5.953 5.176c-.453-.162-.93-.264-1.428-.314l-.078.002a2.895 2.895 0 0 0-2.316 2.684v1.5a.75.75 0 0 0 1.5 0v-1.5a1.395 1.395 0 0 1 1.117-1.295c.787-.139 1.487.054 1.838.411A.75.75 0 0 0 21 8.25c0 .385-.205.702-.505.882c-2.485 1.405-5.337 1.947-8.25 1.947c-3.153 0-6.195-.716-8.25-1.947C3.205 8.952 3 8.635 3 8.25a.75.75 0 0 0 .505-.882c.351-.357 1.051-.55 1.838-.411a1.395 1.395 0 0 1 1.117 1.295v1.5a.75.75 0 0 0 1.5 0v-1.5A2.895 2.895 0 0 0 4.047 6.676C4.533 3.725 7.018 1.5 10 1.5h8Zm-9 6a3 3 0 0 0-3 3v2.25a.75.75 0 0 0 1.5 0v-2.25a1.5 1.5 0 0 1 1.5-1.5H12a1.5 1.5 0 0 1 1.5 1.5v2.25a.75.75 0 0 0 1.5 0v-2.25a3 3 0 0 0-3-3h-2Z",
-    link: "#", // Placeholder
-    isPlaceholder: true,
+    link: "social_media_hub", 
+    isPlaceholder: false, 
     cardBgColor: colors.mediumGreen,
     iconBgColor: colors.darkGreen,
     textColor: colors.offWhite,
@@ -117,37 +119,28 @@ const dashboardCardsData = [
 ];
 
 
-// --- INLINED: CalendarComponent (originally from src/CalendarComponent.jsx) ---
+// --- CalendarComponent ---
 function CalendarComponent() {
-  const [currentDate, setCurrentDate] = useState(new Date()); // State to keep track of the current month being viewed
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   const year = currentDate.getFullYear();
-  const month = currentDate.getMonth(); // 0-indexed month
-
-  // Get the first day of the month (e.g., a Monday, Sunday)
-  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 for Sunday, 1 for Monday, etc.
-  // Get the number of days in the current month
+  const month = currentDate.getMonth();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // Array of month names for display
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
-
-  // Array of weekday names for headers
   const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Function to generate the days for the calendar grid
   const generateDays = () => {
     const days = [];
     
-    // Add empty cells for the days before the 1st of the month
     for (let i = 0; i < firstDayOfMonth; i++) {
       days.push(<div key={`empty-start-${i}`} className="p-2 text-center text-offWhite/30"></div>);
     }
 
-    // Add actual days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const isToday = day === new Date().getDate() &&
                       month === new Date().getMonth() &&
@@ -159,7 +152,7 @@ function CalendarComponent() {
           className={`p-2 text-center rounded-lg transition-colors duration-200 cursor-pointer`}
           style={{
             backgroundColor: isToday ? colors.accentGold : 'transparent',
-            color: isToday ? colors.deepGray : colors.offWhite, // Ensure text color is based on theme
+            color: isToday ? colors.deepGray : colors.offWhite, 
           }}
         >
           {day}
@@ -169,7 +162,6 @@ function CalendarComponent() {
     return days;
   };
 
-  // Handler for navigating to the previous month
   const goToPreviousMonth = () => {
     setCurrentDate(prevDate => {
       const newDate = new Date(prevDate);
@@ -178,7 +170,6 @@ function CalendarComponent() {
     });
   };
 
-  // Handler for navigating to the next month
   const goToNextMonth = () => {
     setCurrentDate(prevDate => {
       const newDate = new Date(prevDate);
@@ -187,7 +178,6 @@ function CalendarComponent() {
     });
   };
 
-  // Handler to open Google Calendar in a new tab
   const openGoogleCalendar = () => {
     window.open('https://calendar.google.com/', '_blank');
   };
@@ -232,7 +222,6 @@ function CalendarComponent() {
         {generateDays()}
       </div>
 
-      {/* NEW: Button to open Google Calendar */}
       <button
         onClick={openGoogleCalendar}
         className="mt-4 p-3 rounded-lg font-semibold transition-colors duration-200"
@@ -245,24 +234,34 @@ function CalendarComponent() {
 }
 
 
-// --- DashboardCard Component (unchanged, still part of App.jsx) ---
-function DashboardCard({ title, description, icon, link, isPlaceholder = false, cardBgColor, iconBgColor, textColor, descColor }) {
+// --- DashboardCard Component ---
+function DashboardCard({ title, description, icon, link, isPlaceholder = false, cardBgColor, iconBgColor, textColor, descColor, onInternalNav }) {
   const PlaceholderBadge = () => (
     <span className="absolute top-2 right-2 bg-accentGold text-deepGray text-xs font-semibold px-2.5 py-0.5 rounded-full">
       Coming Soon
     </span>
   );
 
+  const handleClick = (e) => {
+    if (isPlaceholder) {
+      e.preventDefault();
+      console.log(`${title} is coming soon!`); 
+    } else if (onInternalNav) {
+      e.preventDefault(); 
+      onInternalNav(link); 
+    }
+  };
+
   return (
     <a
-      href={link}
-      target="_blank"
-      rel="noopener noreferrer"
+      href={!isPlaceholder && !onInternalNav ? link : "#"} 
+      target={!isPlaceholder && !onInternalNav ? "_blank" : "_self"} 
+      rel={!isPlaceholder && !onInternalNav ? "noopener noreferrer" : undefined}
       className={`relative flex flex-col items-center p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105
-        ${isPlaceholder ? 'opacity-80 cursor-not-allowed' : ''}
+        ${isPlaceholder ? 'opacity-80 cursor-not-allowed' : 'cursor-pointer'}
       `}
       style={{ backgroundColor: cardBgColor }}
-      onClick={(e) => isPlaceholder && e.preventDefault()}
+      onClick={handleClick}
     >
       {isPlaceholder && <PlaceholderBadge />}
       <div className="flex items-center justify-center w-16 h-16 rounded-full mb-4 text-accentGold" style={{ backgroundColor: iconBgColor }}>
@@ -284,48 +283,520 @@ function DashboardCard({ title, description, icon, link, isPlaceholder = false, 
 }
 
 
-// Main App component for the Centralized Operations Dashboard
+// --- Placeholder Components for different pages ---
+
+// Component for the Main Dashboard Content
+function DashboardContent({ onInternalNav, mainCards }) { 
+  return (
+    <div className="flex-1 p-8 overflow-auto">
+      {/* Dashboard Header */}
+      <header className="flex flex-col md:flex-row justify-between items-center mb-10 text-center md:text-left">
+        <div className="md:w-1/2 mb-4 md:mb-0">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-offWhite">
+            HM Canvases & Alliem Art
+          </h1>
+          <p className="text-xl sm:text-2xl text-lightGreen font-semibold">
+            Operations Dashboard
+          </p>
+        </div>
+
+        <div className="md:w-1/2 flex justify-center md:justify-end">
+          <img 
+            src="/Original on Transparent.png" 
+            alt="HM Canvases & Alliem Art Logo" 
+            onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/200x80/1A4D2E/F3F4F6?text=Logo" }} 
+            className="max-h-24 md:max-h-32 w-auto rounded-lg shadow-md" 
+          />
+        </div>
+      </header>
+
+      {/* Dashboard Overview Heading */}
+      <h2 className="text-3xl font-extrabold text-offWhite mb-8">Dashboard Overview</h2>
+
+      {/* Dynamic Main Content Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+        {mainCards.map(card => (
+          <DashboardCard
+            key={card.id} 
+            title={card.title}
+            description={card.description}
+            icon={card.icon}
+            link={card.link}
+            isPlaceholder={card.isPlaceholder}
+            cardBgColor={card.cardBgColor}
+            iconBgColor={card.iconBgColor}
+            textColor={card.textColor}
+            descColor={card.descColor}
+            onInternalNav={onInternalNav} 
+          />
+        ))}
+        
+        {/* Placeholder for Monthly Sales Graph */}
+        <div className="bg-mediumGreen rounded-xl p-6 shadow-xl flex flex-col justify-between" style={{ minHeight: '300px' }}>
+          <h3 className="text-xl font-bold text-offWhite mb-2">Monthly Sales (Graph Placeholder)</h3>
+          <p className="text-lightGreen">Visualizing canvases made...</p>
+          <div className="h-48 bg-white/10 rounded-lg mt-4 flex items-center justify-center text-white/50 text-sm">
+              [ Graph ]
+          </div>
+        </div>
+
+        {/* Google Calendar */}
+        <CalendarComponent />
+      </div>
+
+      {/* Footer */}
+      <footer className="mt-12 text-center text-offWhite/70 text-sm">
+        <p>&copy; {new Date().getFullYear()} HM Canvases Ltd. All rights reserved.</p>
+        <p>Powered by Google Workspace & Firebase</p>
+      </footer>
+    </div>
+  );
+}
+
+// Component for the MRP System Page
+function MRPPage({ onInternalNav }) {
+  return (
+    <div className="flex-1 p-8 overflow-auto">
+      <h1 className="text-4xl font-extrabold text-offWhite mb-8">MRP System</h1>
+      <p className="text-lightGreen mb-6">Manage your materials, sales orders, and production processes here.</p>
+
+      {/* Navigation within MRP System */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+        <DashboardCard
+            title="Materials Management"
+            description="Add, edit, and view raw materials."
+            icon="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5a2.25 2.25 0 0 1 2.25 2.25v7.5m-16.5-7.5h1.5a.75.75 0 0 0 .75-.75V11.25a.75.75 0 0 0-.75-.75h-1.5a.75.75 0 0 0-.75.75v.75a.75.75 0 0 0 .75.75Zm4.5 0h1.5a.75.75 0 0 0 .75-.75V11.25a.75.75 0 0 0-.75-.75h-1.5a.75.75 0 0 0-.75.75v.75a.75.75 0 0 0 .75.75Zm4.5 0h1.5a.75.75 0 0 0 .75-.75V11.25a.75.75 0 0 0-.75-.75h-1.5a.75.75 0 0 0-.75.75v.75a.75.75 0 0 0 .75.75Z" 
+            cardBgColor={colors.darkGreen}
+            iconBgColor={colors.mediumGreen}
+            textColor={colors.offWhite}
+            descColor={colors.lightGreen}
+            onInternalNav={onInternalNav}
+            link="material_management" 
+        />
+        <DashboardCard
+            title="Sales Orders"
+            description="View and process customer orders."
+            icon="M19.5 14.25v-2.625A3.375 3.375 0 0 0 16.125 8.25H15V6h3.75a3.375 3.375 0 0 1 3.375 3.375v2.625a3.375 3.375 0 0 1-3.375 3.375H15a2.25 2.25 0 0 1-2.25-2.25V10.5a2.25 2.25 0 0 1 2.25-2.25h1.125A2.25 2.25 0 0 1 18 10.5v1.125m-6.75-9.375a9 9 0 1 1-9 9m9-9a9 9 0 0 0-9 9m.375 1.25a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" 
+            cardBgColor={colors.darkGreen}
+            iconBgColor={colors.mediumGreen}
+            textColor={colors.offWhite}
+            descColor={colors.lightGreen}
+            onInternalNav={onInternalNav}
+            link="sales_orders" 
+            isPlaceholder={true} 
+        />
+        <DashboardCard
+            title="Production Planning"
+            description="Plan and track manufacturing batches."
+            icon="M12 21a9 9 0 0 0 9-9c0-.73-.09-1.44-.26-2.12M15 15a3 3 0 0 1-3 3c-1.44 0-2.73-.56-3.75-1.47M3 11.25a9 9 0 0 1 18 0c0 .73-.09 1.44-.26 2.12M9 9a3 3 0 0 0 3-3c1.44 0 2.73.56 3.75 1.47M4.5 7.75v3.5a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75H4.5ZM19.5 7.75v3.5a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-.75ZM9 15.75a.75.75 0 0 0 0 1.5h6a.75.75 0 0 0 0-1.5h-6Z" 
+            cardBgColor={colors.darkGreen}
+            iconBgColor={colors.mediumGreen}
+            textColor={colors.offWhite}
+            descColor={colors.lightGreen}
+            onInternalNav={onInternalNav}
+            link="production_planning" 
+            isPlaceholder={true} 
+        />
+      </div>
+
+      {/* Button to go back to main dashboard */}
+      <div className="mt-8">
+        <button
+          onClick={() => onInternalNav('dashboard')}
+          className="p-3 rounded-lg font-semibold transition-colors duration-200"
+          style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Component for the Social Media Hub Page
+function SocialMediaHubPage({ onInternalNav }) {
+  return (
+    <div className="flex-1 p-8 overflow-auto">
+      <h1 className="text-4xl font-extrabold text-offWhite mb-8">AI Social Media Hub</h1>
+      <p className="text-lightGreen mb-6">Access AI-powered content generation and social media management tools here.</p>
+      {/* Content for Social Media Hub will go here */}
+
+      {/* Button to go back to main dashboard */}
+      <div className="mt-8">
+        <button
+          onClick={() => onInternalNav('dashboard')}
+          className="p-3 rounded-lg font-semibold transition-colors duration-200"
+          style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Material Management Page - Now with Form and Table (Expanded)
+function MaterialManagementPage({ onInternalNav, db, userId }) { 
+  const [materials, setMaterials] = useState([]); 
+  const [loading, setLoading] = useState(true); 
+  const [error, setError] = useState(null); 
+  const [formData, setFormData] = useState({ 
+    code: '',
+    description: '',
+    puom: '',
+    pcp: '', 
+    muom: '',
+    conversionFactor: '',
+    mcp: '', 
+    currentStock: '', // Retained for inventory tracking
+    minStock: '',     // Retained for reorder points
+    supplier: '',
+  });
+  const [editingMaterialId, setEditingMaterialId] = useState(null); 
+
+  // Firestore collection reference
+  const getMaterialsCollectionRef = () => {
+    if (!db || !userId) {
+      console.error("Firestore DB or User ID not available.");
+      return null;
+    }
+    // Correctly reference the private user-specific collection
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    return collection(db, `artifacts/${appId}/users/${userId}/materials`);
+  };
+
+  // Fetch materials from Firestore in real-time
+  useEffect(() => {
+    if (!db || !userId) {
+      return;
+    }
+
+    const materialsColRef = getMaterialsCollectionRef();
+    if (!materialsColRef) return;
+
+    setLoading(true);
+    const q = query(materialsColRef);
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const materialsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMaterials(materialsList);
+      setLoading(false);
+      setError(null); 
+    }, (err) => {
+      console.error("Error fetching materials:", err);
+      setError("Failed to load materials. Please try again.");
+      setLoading(false);
+    });
+
+    // Cleanup listener on component unmount
+    return () => unsubscribe();
+  }, [db, userId]); 
+
+  // Handle form input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Handle form submission (Add or Update)
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!db || !userId) {
+      // Use a custom message box or alert replacement, not standard alert()
+      console.error("Firebase not initialized or user not authenticated.");
+      // For now, we'll use a simple console log for user visibility instead of alert.
+      // In a real app, you'd show a modal or toast notification.
+      return;
+    }
+
+    try {
+      const materialsColRef = getMaterialsCollectionRef();
+      if (!materialsColRef) return;
+
+      const materialData = {
+        code: formData.code,
+        description: formData.description,
+        puom: formData.puom,
+        pcp: parseFloat(formData.pcp), // Parse as float
+        muom: formData.muom,
+        conversionFactor: parseFloat(formData.conversionFactor), // Parse as float
+        mcp: parseFloat(formData.mcp), // Parse as float
+        currentStock: parseFloat(formData.currentStock || 0), // Default to 0 if empty
+        minStock: parseFloat(formData.minStock || 0),         // Default to 0 if empty
+        supplier: formData.supplier,
+        lastUpdated: new Date().toISOString()
+      };
+
+      if (editingMaterialId) {
+        // Update existing material
+        const materialDocRef = doc(db, materialsColRef.path, editingMaterialId);
+        await updateDoc(materialDocRef, materialData);
+        console.log("Material updated with ID: ", editingMaterialId);
+      } else {
+        // Add new material
+        const docRef = await addDoc(materialsColRef, materialData);
+        console.log("Material added with ID: ", docRef.id);
+      }
+
+      // Clear form and reset editing state
+      setFormData({
+        code: '', description: '', puom: '', pcp: '', muom: '', conversionFactor: '',
+        mcp: '', currentStock: '', minStock: '', supplier: '',
+      });
+      setEditingMaterialId(null);
+    } catch (e) {
+      console.error("Error adding/updating material: ", e);
+      // For now, use console error for user visibility. Replace with proper UI feedback.
+    }
+  };
+
+  // Handle Edit button click
+  const handleEdit = (material) => {
+    setFormData({
+      code: material.code || '',
+      description: material.description || '',
+      puom: material.puom || '',
+      pcp: material.pcp || '', 
+      muom: material.muom || '',
+      conversionFactor: material.conversionFactor || '',
+      mcp: material.mcp || '', 
+      currentStock: material.currentStock || '',
+      minStock: material.minStock || '',
+      supplier: material.supplier || '',
+    });
+    setEditingMaterialId(material.id);
+  };
+
+  // Handle Delete button click
+  const handleDelete = async (id) => {
+    if (!db || !userId) {
+      console.error("Firebase not initialized or user not authenticated.");
+      return;
+    }
+    // Using window.confirm as a temporary replacement for proper modal.
+    const confirmDelete = window.confirm("Are you sure you want to delete this material?"); 
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      const materialsColRef = getMaterialsCollectionRef();
+      if (!materialsColRef) return;
+
+      await deleteDoc(doc(db, materialsColRef.path, id));
+      console.log("Material deleted with ID: ", id);
+    } catch (e) {
+      console.error("Error deleting material: ", e);
+      // Replace with proper UI feedback
+    }
+  };
+
+
+  return (
+    <div className="flex-1 p-8 overflow-auto">
+      <h1 className="text-4xl font-extrabold text-offWhite mb-8">Materials Management</h1>
+      <p className="text-lightGreen mb-6">Manage your raw material inventory. Add, edit, and delete materials.</p>
+
+      {/* Material Entry/Edit Form */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg mb-8">
+        <h2 className="text-2xl font-bold text-offWhite mb-4">{editingMaterialId ? 'Edit Material' : 'Add New Material'}</h2>
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="code" className="block text-offWhite text-sm font-bold mb-1">Code</label>
+            <input type="text" id="code" name="code" value={formData.code} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="description" className="block text-offWhite text-sm font-bold mb-1">Description</label>
+            <input type="text" id="description" name="description" value={formData.description} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="puom" className="block text-offWhite text-sm font-bold mb-1">Purchase Unit of Measure (PUOM)</label>
+            <input type="text" id="puom" name="puom" value={formData.puom} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="pcp" className="block text-offWhite text-sm font-bold mb-1">Purchase Cost Price (PCP)</label>
+            <input type="number" step="0.0001" id="pcp" name="pcp" value={formData.pcp} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="muom" className="block text-offWhite text-sm font-bold mb-1">Manufacturing Unit of Measure (MUOM)</label>
+            <input type="text" id="muom" name="muom" value={formData.muom} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="conversionFactor" className="block text-offWhite text-sm font-bold mb-1">Conversion Factor (PUOM to MUOM incl. Overhead)</label>
+            <input type="number" step="0.000000001" id="conversionFactor" name="conversionFactor" value={formData.conversionFactor} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="mcp" className="block text-offWhite text-sm font-bold mb-1">Manufacturing Cost Price (MCP)</label>
+            <input type="number" step="0.0001" id="mcp" name="mcp" value={formData.mcp} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="currentStock" className="block text-offWhite text-sm font-bold mb-1">Current Stock (in MUOM)</label>
+            <input type="number" step="0.01" id="currentStock" name="currentStock" value={formData.currentStock} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="minStock" className="block text-offWhite text-sm font-bold mb-1">Minimum Stock (in MUOM)</label>
+            <input type="number" step="0.01" id="minStock" name="minStock" value={formData.minStock} onChange={handleInputChange} required
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div>
+            <label htmlFor="supplier" className="block text-offWhite text-sm font-bold mb-1">Supplier</label>
+            <input type="text" id="supplier" name="supplier" value={formData.supplier} onChange={handleInputChange}
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+          </div>
+          <div className="md:col-span-2 flex justify-end space-x-4 mt-4">
+            {editingMaterialId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMaterialId(null);
+                  setFormData({ 
+                    code: '', description: '', puom: '', pcp: '', muom: '', conversionFactor: '',
+                    mcp: '', currentStock: '', minStock: '', supplier: '', 
+                  });
+                }}
+                className="bg-gray-500 hover:bg-gray-600 text-offWhite font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition-colors duration-200"
+              >
+                Cancel Edit
+              </button>
+            )}
+            <button
+              type="submit"
+              className="bg-accentGold hover:bg-yellow-600 text-deepGray font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition-colors duration-200"
+            >
+              {editingMaterialId ? 'Update Material' : 'Add Material'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Materials List/Table */}
+      <div className="bg-darkGreen p-6 rounded-xl shadow-lg">
+        <h2 className="text-2xl font-bold text-offWhite mb-4">Current Materials</h2>
+        {loading && <p className="text-lightGreen">Loading materials...</p>}
+        {error && <p className="text-red-400">{error}</p>}
+        {!loading && materials.length === 0 && !error && (
+          <p className="text-offWhite/70">No materials added yet. Use the form above to add your first material!</p>
+        )}
+        {!loading && materials.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-mediumGreen">
+              <thead>
+                <tr>
+                  {/* Removed inline text-offWhite. This will now be handled in index.css */}
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Code</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Description</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">PUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">PCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">MUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Conversion Factor</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">MCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Stock (MUOM)</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Min Stock</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Supplier</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-mediumGreen">
+                {materials.map(material => (
+                  <tr key={material.id} className="hover:bg-mediumGreen transition-colors duration-150">
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-offWhite">{material.code}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.description}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.puom}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.pcp?.toFixed(4)}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.muom}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.conversionFactor}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.mcp?.toFixed(4)}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.currentStock}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.minStock}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.supplier}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => handleEdit(material)}
+                        className="text-accentGold hover:text-yellow-400 mr-3 transition-colors duration-200"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(material.id)}
+                        className="text-red-400 hover:text-red-500 transition-colors duration-200"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+
+      {/* Button to go back to MRP page */}
+      <div className="mt-8">
+        <button
+          onClick={() => onInternalNav('mrp')}
+          className="p-3 rounded-lg font-semibold transition-colors duration-200"
+          style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
+        >
+          Back to MRP System
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+// Main App component
 function App() {
-  const [searchTerm, setSearchTerm] = useState(''); // State for the search bar input
-  const [userId, setUserId] = useState(null); // State to store the authenticated user's ID
-  const [firebaseReady, setFirebaseReady] = useState(false); // State to track Firebase initialization
+  const [searchTerm, setSearchTerm] = useState('');
+  const [userId, setUserId] = useState(null);
+  const [firebaseReady, setFirebaseReady] = useState(false);
+  const [currentPage, setCurrentPage] = useState('dashboard'); 
+  const [db, setDb] = useState(null); 
+
+  const sidebarCards = dashboardCardsData.filter(card => card.location === 'sidebar');
+  const mainCards = dashboardCardsData.filter(card => card.location === 'main');
+
 
   // Firebase Initialization and Authentication
   useEffect(() => {
-    // These global variables are provided by the Canvas environment.
-    // __firebase_config contains your Firebase project's configuration.
-    // __initial_auth_token is a custom token for initial authentication.
-    // __app_id is the unique ID for this Canvas app instance.
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    // FIX: Correctly assign the value of __initial_auth_token
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
 
     if (!firebaseConfig.apiKey) {
       console.error("Firebase configuration is missing. Cannot initialize Firebase.");
-      // Set Firebase ready to true even if config is missing to avoid indefinite loading state
       setFirebaseReady(true);
       return;
     }
 
-    // Initialize Firebase app
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db = getFirestore(app); // Initialize Firestore (even if not used immediately)
+    const firestoreDb = getFirestore(app); 
+    setDb(firestoreDb); 
 
-    // Listen for authentication state changes
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // User is signed in.
         setUserId(user.uid);
         setFirebaseReady(true);
         console.log("Firebase user ID:", user.uid);
       } else {
-        // User is signed out or not yet authenticated.
-        // Attempt to sign in anonymously or with custom token
         try {
-          // If a custom token is provided by the environment, use it.
-          // Otherwise, sign in anonymously (creates a new anonymous user or re-uses existing one).
           if (initialAuthToken) {
             await signInAnonymously(auth, initialAuthToken); 
           } else {
@@ -333,17 +804,14 @@ function App() {
           }
         } catch (error) {
           console.error("Error during Firebase anonymous sign-in:", error);
-          // Handle cases where sign-in fails (e.g., display a message to the user)
         }
-        setFirebaseReady(true); // Firebase is ready, even if sign-in failed
+        setFirebaseReady(true);
       }
     });
 
-    // Cleanup subscription on component unmount
     return () => unsubscribe();
-  }, []); // Empty dependency array means this effect runs once on mount
+  }, []); 
 
-  // Handle Google search when Enter is pressed
   const handleSearch = (event) => {
     if (event.key === 'Enter' && searchTerm.trim() !== '') {
       const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`;
@@ -352,25 +820,68 @@ function App() {
     }
   };
 
-  // Filter cards for sidebar and main content
-  const sidebarCards = dashboardCardsData.filter(card => card.location === 'sidebar');
-  const mainCards = dashboardCardsData.filter(card => card.location === 'main');
+  const handleInternalNavigation = (pageName) => {
+    setCurrentPage(pageName);
+  };
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'dashboard':
+        return <DashboardContent onInternalNav={handleInternalNavigation} mainCards={mainCards} />; 
+      case 'mrp':
+        return <MRPPage onInternalNav={handleInternalNavigation} />;
+      case 'social_media_hub':
+        return <SocialMediaHubPage onInternalNav={handleInternalNavigation} />;
+      case 'material_management': 
+        return <MaterialManagementPage onInternalNav={handleInternalNavigation} db={db} userId={userId} />;
+      case 'sales_orders': 
+        return (
+          <div className="flex-1 p-8 overflow-auto">
+            <h1 className="text-4xl font-extrabold text-offWhite mb-8">Sales Orders</h1>
+            <p className="text-lightGreen mb-6">Sales Order management coming soon!</p>
+            <button
+              onClick={() => handleInternalNavigation('mrp')}
+              className="p-3 rounded-lg font-semibold transition-colors duration-200"
+              style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
+            >
+              Back to MRP System
+            </button>
+          </div>
+        );
+      case 'production_planning': 
+        return (
+          <div className="flex-1 p-8 overflow-auto">
+            <h1 className="text-4xl font-extrabold text-offWhite mb-8">Production Planning</h1>
+            <p className="text-lightGreen mb-6">Production Planning coming soon!</p>
+            <button
+              onClick={() => handleInternalNavigation('mrp')}
+              className="p-3 rounded-lg font-semibold transition-colors duration-200"
+              style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
+            >
+              Back to MRP System
+            </button>
+          </div>
+        );
+      default:
+        return <DashboardContent onInternalNav={handleInternalNavigation} mainCards={mainCards} />;
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row font-['Poppins']" style={{ backgroundColor: colors.deepGray }}>
       
-      {/* Tall Box / Sidebar Alternative (left side) - Adjusted for responsiveness */}
+      {/* Sidebar */}
       <div className="w-full md:w-1/4 min-w-[200px] max-w-[300px] bg-gradient-to-b from-darkGreen to-mediumGreen p-6 flex flex-col items-center rounded-b-none md:rounded-b-none md:rounded-r-3xl shadow-xl">
         <h2 className="text-xl font-bold mb-6 text-white text-center">Dashboard Insights</h2>
         
-        {/* Display User ID (Optional, but good for debugging/multi-user identification) */}
+        {/* Display User ID */}
         {firebaseReady && userId ? (
           <p className="text-offWhite text-xs mb-4">User ID: {userId}</p>
         ) : (
           <p className="text-offWhite text-xs mb-4">Authenticating...</p>
         )}
 
-        {/* Search Bar now triggers Google search on Enter */}
+        {/* Search Bar */}
         <input 
           type="text" 
           placeholder="Search Google..." 
@@ -380,9 +891,9 @@ function App() {
           onKeyPress={handleSearch} 
         />
 
-        {/* Dynamic Sidebar Cards */}
+        {/* Dynamic Sidebar Cards (now include internal navigation) */}
         <div className="space-y-4 w-full">
-          {sidebarCards.map(card => (
+          {sidebarCards.map(card => ( 
             <DashboardCard
               key={card.id} 
               title={card.title}
@@ -394,6 +905,7 @@ function App() {
               iconBgColor={card.iconBgColor}
               textColor={card.textColor}
               descColor={card.descColor}
+              onInternalNav={handleInternalNavigation} 
             />
           ))}
 
@@ -405,70 +917,9 @@ function App() {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 p-8 overflow-auto">
-        {/* Dashboard Header - adapted for dark theme with two columns and logo */}
-        <header className="flex flex-col md:flex-row justify-between items-center mb-10 text-center md:text-left">
-          {/* Left Column for Text */}
-          <div className="md:w-1/2 mb-4 md:mb-0">
-            <h1 className="text-4xl sm:text-5xl font-extrabold text-offWhite">
-              HM Canvases & Alliem Art
-            </h1>
-            <p className="text-xl sm:text-2xl text-lightGreen font-semibold">
-              Operations Dashboard
-            </p>
-          </div>
+      {/* Main Content Area (conditionally rendered page) */}
+      {renderPage()}
 
-          {/* Right Column for Logo */}
-          <div className="md:w-1/2 flex justify-center md:justify-end">
-            <img 
-              src="Original_on_Transparent.png" 
-              alt="HM Canvases & Alliem Art Logo" 
-              onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/200x80/1A4D2E/F3F4F6?text=Logo" }} 
-              className="max-h-24 md:max-h-32 w-auto rounded-lg shadow-md" 
-            />
-          </div>
-        </header>
-
-        {/* Dashboard Overview Heading (kept for clarity) */}
-        <h2 className="text-3xl font-extrabold text-offWhite mb-8">Dashboard Overview</h2>
-
-        {/* Dynamic Main Content Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
-          {mainCards.map(card => (
-            <DashboardCard
-              key={card.id} 
-              title={card.title}
-              description={card.description}
-              icon={card.icon}
-              link={card.link}
-              isPlaceholder={card.isPlaceholder}
-              cardBgColor={card.cardBgColor}
-              iconBgColor={card.iconBgColor}
-              textColor={card.textColor}
-              descColor={card.descColor}
-            />
-          ))}
-          
-          {/* Placeholder for Monthly Sales Graph */}
-          <div className="bg-mediumGreen rounded-xl p-6 shadow-xl flex flex-col justify-between" style={{ minHeight: '300px' }}>
-            <h3 className="text-xl font-bold text-offWhite mb-2">Monthly Sales (Graph Placeholder)</h3>
-            <p className="text-lightGreen">Visualizing canvases made...</p>
-            <div className="h-48 bg-white/10 rounded-lg mt-4 flex items-center justify-center text-white/50 text-sm">
-                [ Graph ]
-            </div>
-          </div>
-
-          {/* Google Calendar */}
-          <CalendarComponent />
-        </div>
-
-        {/* Footer - adapted for dark theme */}
-        <footer className="mt-12 text-center text-offWhite/70 text-sm">
-          <p>&copy; {new Date().getFullYear()} HM Canvases Ltd. All rights reserved.</p>
-          <p>Powered by Google Workspace & Firebase</p>
-        </footer>
-      </div>
     </div>
   );
 }
