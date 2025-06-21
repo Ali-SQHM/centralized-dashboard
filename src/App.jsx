@@ -696,18 +696,18 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
             <table className="min-w-full divide-y divide-mediumGreen">
               <thead>
                 <tr>
-                  {/* Removed inline text-offWhite. This will now be handled in index.css */}
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Code</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Description</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">PUOM</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">PCP</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">MUOM</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Conversion Factor</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">MCP</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Stock (MUOM)</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Min Stock</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider">Supplier</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider">Actions</th>
+                  {/* Applied inline style directly to th elements for maximum specificity */}
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Code</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Description</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>PUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>PCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>MUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Conversion Factor</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>MCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Stock (MUOM)</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Min Stock</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Supplier</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-mediumGreen">
