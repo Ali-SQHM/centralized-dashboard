@@ -4,3 +4,43 @@
 
 /* Import Poppins font from Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+
+/* Force header and paragraph text colors for the main dashboard content */
+/* This is necessary due to persistent overrides that other methods couldn't address. */
+/* Ensures consistency with the dark theme's intended color palette. */
+body {
+  /* This ensures a dark base for the body, if not already set by JS or Tailwind utilities */
+  background-color: #111827; /* deepGray */
+}
+
+h1.text-4xl.sm\:text-5xl.font-extrabold { /* Targeting the main title */
+    color: #F3F4F6 !important; /* offWhite */
+}
+
+p.text-xl.sm\:text-2xl.font-semibold { /* Targeting "Operations Dashboard" */
+    color: #738C71 !important; /* lightGreen */
+}
+
+/* Updated selector to be more specific to exclude footer p tags if they have different styles */
+p.mt-2.text-base.sm\:text-lg { /* Targeting "Your centralized hub..." (though now removed from JSX, keeping rule for robustness) */
+    color: #F3F4F6 !important; /* offWhite */
+    opacity: 0.8 !important;
+}
+
+h2.text-3xl.font-extrabold.mb-8 { /* Targeting "Dashboard Overview" */
+    color: #F3F4F6 !important; /* offWhite */
+}
+
+/* Targeting placeholder text within the main content grid */
+.grid h3.text-xl.font-bold.mb-2 { /* Targets h3 within grid cards */
+    color: #F3F4F6 !important; /* offWhite */
+}
+
+.grid p.text-lightGreen { /* Targets specific p with text-lightGreen inside grid cards */
+    color: #738C71 !important; /* lightGreen */
+}
+
+/* NEW: Rule to explicitly set the footer text color */
+footer.text-offWhite\/70.text-sm p { /* Targeting p tags directly within the footer */
+    color: #F3F4F6 !important; /* offWhite */
+    opacity: 0.7 !important; /* Maintain the 70% opacity */
