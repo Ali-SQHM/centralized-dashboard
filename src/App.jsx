@@ -460,10 +460,20 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
       console.error("Firestore DB or User ID not available for collection reference.");
       return null;
     }
-    // Correctly reference the private user-specific collection
-    // Using the real appId from firebaseConfig.appId now
-    const appId = "1:544423481137:web:9d0cb650642dd8f1b2ea10"; // Your actual Firebase appId
-    return collection(db, `artifacts/${appId}/users/${userId}/materials`);
+    // IMPORTANT: Access the Firebase App ID from the firebaseConfig object directly
+    // This is the correct way for deployed apps outside the Canvas global variables
+    const firebaseConfig = {
+      apiKey: "AIzaSyDwiZCSXUm-zOwXbkTL_yI8Vn-B2xNtaU8",
+      authDomain: "hm-canvases-alliem-art.firebaseapp.com",
+      projectId: "hm-canvases-alliem-art",
+      storageBucket: "hm-canvases-alliem-art.firebasestorage.app",
+      messagingSenderId: "544423481137",
+      appId: "1:544423481137:web:9d0cb650642dd8f1b2ea10",
+      measurementId: "G-D23Z6GBTH0"
+    };
+    const appId = firebaseConfig.appId; // Use the appId from the defined config
+
+    return collection(db, `artifacts/${appId}/users/${userId}/materials`); 
   };
 
   // Fetch materials from Firestore in real-time
@@ -779,7 +789,8 @@ function App() {
 
   // Firebase Initialization and Authentication
   useEffect(() => {
-    // Your actual Firebase project configuration
+    // IMPORTANT: Use your actual Firebase project configuration directly here for deployed apps.
+    // The __app_id, __firebase_config, and __initial_auth_token are only available in the Canvas environment.
     const firebaseConfig = {
       apiKey: "AIzaSyDwiZCSXUm-zOwXbkTL_yI8Vn-B2xNtaU8",
       authDomain: "hm-canvases-alliem-art.firebaseapp.com",
@@ -790,12 +801,12 @@ function App() {
       measurementId: "G-D23Z6GBTH0"
     };
 
-    // Use the appId from the firebaseConfig for consistency
-    const appId = firebaseConfig.appId;
+    // We still need a valid appId string, which we can take from the firebaseConfig directly.
+    const appId = firebaseConfig.appId; 
 
-    // The initialAuthToken is not provided by your environment, so keep it null
+    // No initialAuthToken for standard deployments; we'll rely on signInAnonymously.
     const initialAuthToken = null; 
-
+    
     // Log the configuration being used
     console.log("Using Firebase App ID:", appId);
     console.log("Using Firebase Config:", firebaseConfig);
@@ -823,7 +834,7 @@ function App() {
         } else {
           console.log("No Firebase user found, attempting anonymous sign-in.");
           try {
-            // Since initialAuthToken is null, this will always sign in anonymously without it
+            // Since initialAuthToken is null (for deployed app), this will always sign in anonymously.
             await signInAnonymously(auth);
             console.log("Signed in anonymously.");
           } catch (error) {
