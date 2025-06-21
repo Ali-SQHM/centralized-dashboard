@@ -457,22 +457,28 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
   // Firestore collection reference
   const getMaterialsCollectionRef = () => {
     if (!db || !userId) {
-      console.error("Firestore DB or User ID not available.");
+      console.error("Firestore DB or User ID not available for collection reference.");
       return null;
     }
     // Correctly reference the private user-specific collection
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    // Using the real appId from firebaseConfig.appId now
+    const appId = "1:544423481137:web:9d0cb650642dd8f1b2ea10"; // Your actual Firebase appId
     return collection(db, `artifacts/${appId}/users/${userId}/materials`);
   };
 
   // Fetch materials from Firestore in real-time
   useEffect(() => {
     if (!db || !userId) {
+      console.log("Skipping material fetch: DB or userId not ready.");
       return;
     }
 
     const materialsColRef = getMaterialsCollectionRef();
-    if (!materialsColRef) return;
+    if (!materialsColRef) {
+      setError("Firestore collection reference could not be established.");
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     const q = query(materialsColRef);
@@ -487,7 +493,7 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
       setError(null); 
     }, (err) => {
       console.error("Error fetching materials:", err);
-      setError("Failed to load materials. Please try again.");
+      setError(`Failed to load materials: ${err.message}. Please check your Firebase rules and internet connection.`);
       setLoading(false);
     });
 
@@ -508,9 +514,7 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!db || !userId) {
-      // Use a custom message box or alert replacement, not standard alert()
       console.error("Firebase not initialized or user not authenticated.");
-      // For now, we'll use a simple console log for user visibility instead of alert.
       // In a real app, you'd show a modal or toast notification.
       return;
     }
@@ -552,7 +556,7 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
       setEditingMaterialId(null);
     } catch (e) {
       console.error("Error adding/updating material: ", e);
-      // For now, use console error for user visibility. Replace with proper UI feedback.
+      setError(`Failed to save material: ${e.message}`);
     }
   };
 
@@ -593,7 +597,7 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
       console.log("Material deleted with ID: ", id);
     } catch (e) {
       console.error("Error deleting material: ", e);
-      // Replace with proper UI feedback
+      setError(`Failed to delete material: ${e.message}`);
     }
   };
 
@@ -610,52 +614,52 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
           <div>
             <label htmlFor="code" className="block text-offWhite text-sm font-bold mb-1">Code</label>
             <input type="text" id="code" name="code" value={formData.code} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="description" className="block text-offWhite text-sm font-bold mb-1">Description</label>
             <input type="text" id="description" name="description" value={formData.description} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="puom" className="block text-offWhite text-sm font-bold mb-1">Purchase Unit of Measure (PUOM)</label>
             <input type="text" id="puom" name="puom" value={formData.puom} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="pcp" className="block text-offWhite text-sm font-bold mb-1">Purchase Cost Price (PCP)</label>
             <input type="number" step="0.0001" id="pcp" name="pcp" value={formData.pcp} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="muom" className="block text-offWhite text-sm font-bold mb-1">Manufacturing Unit of Measure (MUOM)</label>
             <input type="text" id="muom" name="muom" value={formData.muom} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="conversionFactor" className="block text-offWhite text-sm font-bold mb-1">Conversion Factor (PUOM to MUOM incl. Overhead)</label>
             <input type="number" step="0.000000001" id="conversionFactor" name="conversionFactor" value={formData.conversionFactor} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="mcp" className="block text-offWhite text-sm font-bold mb-1">Manufacturing Cost Price (MCP)</label>
             <input type="number" step="0.0001" id="mcp" name="mcp" value={formData.mcp} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="currentStock" className="block text-offWhite text-sm font-bold mb-1">Current Stock (in MUOM)</label>
             <input type="number" step="0.01" id="currentStock" name="currentStock" value={formData.currentStock} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="minStock" className="block text-offWhite text-sm font-bold mb-1">Minimum Stock (in MUOM)</label>
             <input type="number" step="0.01" id="minStock" name="minStock" value={formData.minStock} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
             <label htmlFor="supplier" className="block text-offWhite text-sm font-bold mb-1">Supplier</label>
             <input type="text" id="supplier" name="supplier" value={formData.supplier} onChange={handleInputChange}
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-darkGray leading-tight focus:outline-none focus:shadow-outline bg-white/90" />
+                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div className="md:col-span-2 flex justify-end space-x-4 mt-4">
             {editingMaterialId && (
@@ -696,18 +700,18 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
             <table className="min-w-full divide-y divide-mediumGreen">
               <thead>
                 <tr>
-                  {/* Applied inline style directly to th elements for maximum specificity */}
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Code</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Description</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>PUOM</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>PCP</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>MUOM</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Conversion Factor</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>MCP</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Stock (MUOM)</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Min Stock</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Supplier</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider" style={{ color: colors.offWhite }}>Actions</th>
+                  {/* Updated to use Tailwind classes for background and text color */}
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Code</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Description</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">MUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Conversion Factor</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">MCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Current Stock (MUOM)</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Min Stock</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Supplier</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-mediumGreen">
@@ -775,41 +779,65 @@ function App() {
 
   // Firebase Initialization and Authentication
   useEffect(() => {
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
+    // Your actual Firebase project configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDwiZCSXUm-zOwXbkTL_yI8Vn-B2xNtaU8",
+      authDomain: "hm-canvases-alliem-art.firebaseapp.com",
+      projectId: "hm-canvases-alliem-art",
+      storageBucket: "hm-canvases-alliem-art.firebasestorage.app",
+      messagingSenderId: "544423481137",
+      appId: "1:544423481137:web:9d0cb650642dd8f1b2ea10",
+      measurementId: "G-D23Z6GBTH0"
+    };
 
-    if (!firebaseConfig.apiKey) {
-      console.error("Firebase configuration is missing. Cannot initialize Firebase.");
-      setFirebaseReady(true);
+    // Use the appId from the firebaseConfig for consistency
+    const appId = firebaseConfig.appId;
+
+    // The initialAuthToken is not provided by your environment, so keep it null
+    const initialAuthToken = null; 
+
+    // Log the configuration being used
+    console.log("Using Firebase App ID:", appId);
+    console.log("Using Firebase Config:", firebaseConfig);
+    console.log("Initial Auth Token present:", !!initialAuthToken);
+    
+    // Proceed with Firebase initialization if config is valid
+    if (!firebaseConfig || !firebaseConfig.apiKey) {
+      console.error("Firebase configuration is missing or invalid. Cannot initialize Firebase.");
+      setFirebaseReady(true); 
       return;
     }
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const firestoreDb = getFirestore(app); 
-    setDb(firestoreDb); 
+    try {
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const firestoreDb = getFirestore(app); 
+      setDb(firestoreDb); 
+      console.log("Firebase app initialized successfully.");
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-        setFirebaseReady(true);
-        console.log("Firebase user ID:", user.uid);
-      } else {
-        try {
-          if (initialAuthToken) {
-            await signInAnonymously(auth, initialAuthToken); 
-          } else {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          setUserId(user.uid);
+          setFirebaseReady(true);
+          console.log("Firebase user authenticated with ID:", user.uid);
+        } else {
+          console.log("No Firebase user found, attempting anonymous sign-in.");
+          try {
+            // Since initialAuthToken is null, this will always sign in anonymously without it
             await signInAnonymously(auth);
+            console.log("Signed in anonymously.");
+          } catch (error) {
+            console.error("Error during Firebase anonymous sign-in:", error);
+            setFirebaseReady(true); 
           }
-        } catch (error) {
-          console.error("Error during Firebase anonymous sign-in:", error);
         }
-        setFirebaseReady(true);
-      }
-    });
+      });
 
-    return () => unsubscribe();
+      return () => unsubscribe();
+    } catch (e) {
+      console.error("Error initializing Firebase app:", e);
+      setFirebaseReady(true); 
+    }
   }, []); 
 
   const handleSearch = (event) => {
