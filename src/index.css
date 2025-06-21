@@ -44,3 +44,4 @@ h2.text-3xl.font-extrabold.mb-8 { /* Targeting "Dashboard Overview" */
 footer.text-offWhite\/70.text-sm p { /* Targeting p tags directly within the footer */
     color: #F3F4F6 !important; /* offWhite */
     opacity: 0.7 !important; /* Maintain the 70% opacity */
+}

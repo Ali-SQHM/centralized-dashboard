@@ -298,7 +298,8 @@ function App() {
     // __app_id is the unique ID for this Canvas app instance.
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : null; // Corrected: Use initialAuthToken variable
+    // FIX: Correctly assign the value of __initial_auth_token
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
 
     if (!firebaseConfig.apiKey) {
       console.error("Firebase configuration is missing. Cannot initialize Firebase.");
