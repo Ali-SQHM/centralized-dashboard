@@ -2,6 +2,17 @@
 // This version introduces a multi-page structure using state for navigation
 // It includes placeholders for MRP and Social Media Hub pages.
 // NOW INCLUDES MATERIAL MANAGEMENT FUNCTIONALITY WITH FIRESTORE, USING YOUR SPECIFIC HEADERS.
+// UPDATED COMMON UNITS FOR DROPDOWNS.
+// FIXED: Missing closing brace in DashboardCard's <p> element's style attribute.
+// FIXED: Dropdown styling for better readability (white text on white background issue).
+// UPDATED: Attempted to change dropdown highlight to lightGreen using focus styles.
+// FIXED: Dashboard links not working correctly (differentiated internal/external navigation).
+// FIXED: ReferenceError: PlaceholderBadge is not defined by moving its definition outside DashboardCard.
+// NEW: Added 'Material Type' field with specific categories.
+// NEW: Added Search and Filter functionality to MaterialManagementPage.
+// FIXED: Unified form input field background colors to bg-white/10 and text to text-offWhite.
+// UPDATED: Added 'Sheet Materials' to the materialTypes array.
+// NEW: Formatted conversionFactor and mcp in the table to display with six decimal places.
 
 import React, { useState, useEffect } from 'react';
 
@@ -234,29 +245,37 @@ function CalendarComponent() {
 }
 
 
+// --- PlaceholderBadge Component (Moved outside DashboardCard) ---
+const PlaceholderBadge = () => (
+  <span className="absolute top-2 right-2 bg-accentGold text-deepGray text-xs font-semibold px-2.5 py-0.5 rounded-full">
+    Coming Soon
+  </span>
+);
+
+
 // --- DashboardCard Component ---
 function DashboardCard({ title, description, icon, link, isPlaceholder = false, cardBgColor, iconBgColor, textColor, descColor, onInternalNav }) {
-  const PlaceholderBadge = () => (
-    <span className="absolute top-2 right-2 bg-accentGold text-deepGray text-xs font-semibold px-2.5 py-0.5 rounded-full">
-      Coming Soon
-    </span>
-  );
+  // Determine if it's an external link
+  const isExternalLink = link.startsWith('http://') || link.startsWith('https://');
 
   const handleClick = (e) => {
     if (isPlaceholder) {
-      e.preventDefault();
-      console.log(`${title} is coming soon!`); 
-    } else if (onInternalNav) {
-      e.preventDefault(); 
-      onInternalNav(link); 
+      e.preventDefault(); // Prevent navigation for placeholders
+      console.log(`${title} is coming soon!`);
+    } else if (!isExternalLink && onInternalNav) { // Only call onInternalNav for internal links
+      e.preventDefault(); // Prevent default <a> behavior for internal links
+      onInternalNav(link);
     }
+    // If it's an external link, do nothing here; let the default <a> behavior handle it.
   };
 
   return (
     <a
-      href={!isPlaceholder && !onInternalNav ? link : "#"} 
-      target={!isPlaceholder && !onInternalNav ? "_blank" : "_self"} 
-      rel={!isPlaceholder && !onInternalNav ? "noopener noreferrer" : undefined}
+      // If it's a placeholder or internal link, use # and let handleClick manage.
+      // If it's an external link, use the actual link and target="_blank".
+      href={isPlaceholder || !isExternalLink ? "#" : link}
+      target={isExternalLink ? "_blank" : "_self"}
+      rel={isExternalLink ? "noopener noreferrer" : undefined}
       className={`relative flex flex-col items-center p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105
         ${isPlaceholder ? 'opacity-80 cursor-not-allowed' : 'cursor-pointer'}
       `}
@@ -277,7 +296,9 @@ function DashboardCard({ title, description, icon, link, isPlaceholder = false, 
         </svg>
       </div>
       <h3 className="text-xl font-semibold text-center mb-2" style={{ color: textColor }}>{title}</h3>
-      <p className="text-center text-sm" style={{ color: descColor }}>{description}</p>
+      <p className="text-center text-sm" style={{ color: descColor }}>
+        {description}
+      </p>
     </a>
   );
 }
@@ -435,6 +456,31 @@ function SocialMediaHubPage({ onInternalNav }) {
   );
 }
 
+// Define a list of common units based on user's request
+const commonUnits = [
+  '', // Empty option for initial selection
+  'mm', 'cm', 'm',
+  'cm2', 'cm3', 'm3',
+  'ltr',
+  'ea', // Each
+  'sht', // Sheet
+  'roll',
+  'box',
+];
+
+// Define material types - UPDATED
+const materialTypes = [
+  '', // Empty option for initial selection (for filter)
+  'Wood',
+  'Fabric',
+  'Sheet Materials', // Added 'Sheet Materials'
+  'Packaging',
+  'Hardware/Components',
+  'Mediums/Coatings',
+  'Bought-in Profiles',
+];
+
+
 // Material Management Page - Now with Form and Table (Expanded)
 function MaterialManagementPage({ onInternalNav, db, userId }) { 
   const [materials, setMaterials] = useState([]); 
@@ -443,16 +489,21 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
   const [formData, setFormData] = useState({ 
     code: '',
     description: '',
-    puom: '',
+    materialType: '', // New field for material type
+    puom: '', 
     pcp: '', 
-    muom: '',
+    muom: '', 
     conversionFactor: '',
     mcp: '', 
-    currentStock: '', // Retained for inventory tracking
-    minStock: '',     // Retained for reorder points
+    currentStock: '', 
+    minStock: '',     
     supplier: '',
   });
   const [editingMaterialId, setEditingMaterialId] = useState(null); 
+  // State for search and filter
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterMaterialType, setFilterMaterialType] = useState('');
+
 
   // Firestore collection reference
   const getMaterialsCollectionRef = () => {
@@ -536,6 +587,7 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
       const materialData = {
         code: formData.code,
         description: formData.description,
+        materialType: formData.materialType, // Save material type
         puom: formData.puom,
         pcp: parseFloat(formData.pcp), // Parse as float
         muom: formData.muom,
@@ -560,7 +612,7 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
 
       // Clear form and reset editing state
       setFormData({
-        code: '', description: '', puom: '', pcp: '', muom: '', conversionFactor: '',
+        code: '', description: '', materialType: '', puom: '', pcp: '', muom: '', conversionFactor: '',
         mcp: '', currentStock: '', minStock: '', supplier: '',
       });
       setEditingMaterialId(null);
@@ -575,9 +627,10 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
     setFormData({
       code: material.code || '',
       description: material.description || '',
-      puom: material.puom || '',
+      materialType: material.materialType || '', // Load material type for editing
+      puom: material.puom || '', 
       pcp: material.pcp || '', 
-      muom: material.muom || '',
+      muom: material.muom || '', 
       conversionFactor: material.conversionFactor || '',
       mcp: material.mcp || '', 
       currentStock: material.currentStock || '',
@@ -611,6 +664,18 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
     }
   };
 
+  // Filtered materials based on search term and material type
+  const filteredMaterials = materials.filter(material => {
+    const matchesSearchTerm = searchTerm === '' ||
+      material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      material.description.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesMaterialType = filterMaterialType === '' ||
+      material.materialType === filterMaterialType;
+    
+    return matchesSearchTerm && matchesMaterialType;
+  });
+
 
   return (
     <div className="flex-1 p-8 overflow-auto">
@@ -632,9 +697,24 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
                    className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
           </div>
           <div>
+            <label htmlFor="materialType" className="block text-offWhite text-sm font-bold mb-1">Material Type</label>
+            <select id="materialType" name="materialType" value={formData.materialType} onChange={handleInputChange} required
+                    className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen bg-white/10">
+              {materialTypes.map(type => (
+                // Changed option class to reflect consistent styling
+                <option key={type} value={type} className="text-deepGray bg-offWhite">{type}</option> 
+              ))}
+            </select>
+          </div>
+          <div>
             <label htmlFor="puom" className="block text-offWhite text-sm font-bold mb-1">Purchase Unit of Measure (PUOM)</label>
-            <input type="text" id="puom" name="puom" value={formData.puom} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
+            <select id="puom" name="puom" value={formData.puom} onChange={handleInputChange} required
+                    className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen bg-white/10">
+              {commonUnits.map(unit => (
+                // Changed option class to reflect consistent styling
+                <option key={unit} value={unit} className="text-deepGray bg-offWhite">{unit}</option> 
+              ))}
+            </select>
           </div>
           <div>
             <label htmlFor="pcp" className="block text-offWhite text-sm font-bold mb-1">Purchase Cost Price (PCP)</label>
@@ -643,8 +723,13 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
           </div>
           <div>
             <label htmlFor="muom" className="block text-offWhite text-sm font-bold mb-1">Manufacturing Unit of Measure (MUOM)</label>
-            <input type="text" id="muom" name="muom" value={formData.muom} onChange={handleInputChange} required
-                   className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10" />
+            <select id="muom" name="muom" value={formData.muom} onChange={handleInputChange} required
+                    className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen bg-white/10">
+              {commonUnits.map(unit => (
+                // Changed option class to reflect consistent styling
+                <option key={unit} value={unit} className="text-deepGray bg-offWhite">{unit}</option> 
+              ))}
+            </select>
           </div>
           <div>
             <label htmlFor="conversionFactor" className="block text-offWhite text-sm font-bold mb-1">Conversion Factor (PUOM to MUOM incl. Overhead)</label>
@@ -678,7 +763,7 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
                 onClick={() => {
                   setEditingMaterialId(null);
                   setFormData({ 
-                    code: '', description: '', puom: '', pcp: '', muom: '', conversionFactor: '',
+                    code: '', description: '', materialType: '', puom: '', pcp: '', muom: '', conversionFactor: '',
                     mcp: '', currentStock: '', minStock: '', supplier: '', 
                   });
                 }}
@@ -697,6 +782,38 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
         </form>
       </div>
 
+      {/* Filter and Search Bar */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg mb-8 flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <label htmlFor="search" className="block text-offWhite text-sm font-bold mb-1">Search by Code or Description</label>
+          <input
+            type="text"
+            id="search"
+            placeholder="e.g., WOOD-001, Oak Timber"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10"
+          />
+        </div>
+        <div className="flex-1">
+          <label htmlFor="filterMaterialType" className="block text-offWhite text-sm font-bold mb-1">Filter by Material Type</label>
+          <select
+            id="filterMaterialType"
+            value={filterMaterialType}
+            onChange={(e) => setFilterMaterialType(e.target.value)}
+            // Unified styling for select elements
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen bg-white/10"
+          >
+            {/* Add an empty option to clear the filter */}
+            <option value="" className="text-deepGray bg-offWhite">All Types</option> 
+            {materialTypes.slice(1).map(type => ( // Slice to skip the initial empty option
+              // Changed option class to reflect consistent styling
+              <option key={type} value={type} className="text-deepGray bg-offWhite">{type}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Materials List/Table */}
       <div className="bg-darkGreen p-6 rounded-xl shadow-lg">
         <h2 className="text-2xl font-bold text-offWhite mb-4">Current Materials</h2>
@@ -705,14 +822,17 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
         {!loading && materials.length === 0 && !error && (
           <p className="text-offWhite/70">No materials added yet. Use the form above to add your first material!</p>
         )}
-        {!loading && materials.length > 0 && (
+        {!loading && filteredMaterials.length === 0 && materials.length > 0 && !error && (
+          <p className="text-offWhite/70">No materials match your current search and filter criteria.</p>
+        )}
+        {!loading && filteredMaterials.length > 0 && (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-mediumGreen">
               <thead>
                 <tr>
-                  {/* Updated to use Tailwind classes for background and text color */}
                   <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Code</th>
                   <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Description</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Material Type</th> {/* New header */}
                   <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PUOM</th>
                   <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PCP</th>
                   <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">MUOM</th>
@@ -725,15 +845,16 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-mediumGreen">
-                {materials.map(material => (
+                {filteredMaterials.map(material => (
                   <tr key={material.id} className="hover:bg-mediumGreen transition-colors duration-150">
                     <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-offWhite">{material.code}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.description}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.materialType}</td> {/* Display material type */}
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.puom}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.pcp?.toFixed(4)}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.muom}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.conversionFactor}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.mcp?.toFixed(4)}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.conversionFactor?.toFixed(6)}</td> {/* Formatted to 6 decimal places */}
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.mcp?.toFixed(6)}</td> {/* Formatted to 6 decimal places */}
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.currentStock}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.minStock}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.supplier}</td>
@@ -944,7 +1065,7 @@ function App() {
               iconBgColor={card.iconBgColor}
               textColor={card.textColor}
               descColor={card.descColor}
-              onInternalNav={handleInternalNavigation} 
+              // Do NOT pass onInternalNav to sidebar cards, let them handle external links naturally
             />
           ))}
 
