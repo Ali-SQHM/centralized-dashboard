@@ -13,6 +13,9 @@
 // FIXED: Unified form input field background colors to bg-white/10 and text to text-offWhite.
 // UPDATED: Added 'Sheet Materials' to the materialTypes array.
 // NEW: Formatted conversionFactor and mcp in the table to display with six decimal places.
+// NEW: Added a StockLevelChart component to MaterialManagementPage.
+// UPDATED: Reordered sections in MaterialManagementPage (Chart -> List -> Form).
+// UPDATED: Added 'Profile' to the materialTypes array.
 
 import React, { useState, useEffect } from 'react';
 
@@ -478,7 +481,87 @@ const materialTypes = [
   'Hardware/Components',
   'Mediums/Coatings',
   'Bought-in Profiles',
+  'Profile', // Added 'Profile' material type
 ];
+
+// --- StockLevelChart Component ---
+function StockLevelChart({ materials, materialTypes, colors }) {
+  const [selectedMaterialType, setSelectedMaterialType] = useState('');
+
+  const filteredChartMaterials = materials.filter(material => {
+    return selectedMaterialType === '' || material.materialType === selectedMaterialType;
+  });
+
+  // Calculate max stock for scaling the chart, considering both current and min stock for better scaling
+  const maxStock = Math.max(
+    ...filteredChartMaterials.map(m => Math.max(m.currentStock || 0, m.minStock || 0)),
+    1 // Ensure at least 1 to avoid division by zero if all stocks are zero
+  );
+
+  return (
+    <div className="bg-mediumGreen p-6 rounded-xl shadow-lg mb-8">
+      <h2 className="text-2xl font-bold text-offWhite mb-4">Stock Levels Overview</h2>
+      <div className="mb-4">
+        <label htmlFor="chartMaterialTypeFilter" className="block text-offWhite text-sm font-bold mb-1">Filter by Material Type:</label>
+        <select
+          id="chartMaterialTypeFilter"
+          value={selectedMaterialType}
+          onChange={(e) => setSelectedMaterialType(e.target.value)}
+          className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen bg-white/10"
+        >
+          <option value="" className="text-deepGray bg-offWhite">All Types</option>
+          {materialTypes.slice(1).map(type => ( // Slice to skip the initial empty option
+            <option key={type} value={type} className="text-deepGray bg-offWhite">{type}</option>
+          ))}
+        </select>
+      </div>
+
+      {filteredChartMaterials.length === 0 ? (
+        <p className="text-offWhite/70">No materials to display for the selected type or no materials added yet.</p>
+      ) : (
+        <div className="flex items-end justify-start h-64 overflow-x-auto p-2 border border-lightGreen rounded-lg bg-white/5">
+          {filteredChartMaterials.map((material, index) => {
+            const barHeight = (material.currentStock / maxStock) * 100; // Percentage of max height
+            const minStockHeight = (material.minStock / maxStock) * 100; // Percentage of max height
+            const isBelowMin = material.currentStock < material.minStock;
+
+            return (
+              <div key={material.id} className="relative mx-1 h-full flex flex-col justify-end items-center" style={{ minWidth: '60px', flexShrink: 0 }}>
+                {/* Min Stock Line */}
+                {material.minStock > 0 && (
+                  <div
+                    className="absolute w-full border-b-2 border-dashed"
+                    style={{
+                      bottom: `${minStockHeight}%`,
+                      borderColor: colors.accentGold,
+                      zIndex: 10,
+                    }}
+                  ></div>
+                )}
+                
+                {/* Current Stock Bar */}
+                <div
+                  className={`w-4/5 rounded-t-sm transition-all duration-300 relative`}
+                  style={{
+                    height: `${barHeight}%`,
+                    backgroundColor: isBelowMin ? '#EF4444' : colors.lightGreen, // Red for below min, lightGreen otherwise
+                    zIndex: 5,
+                  }}
+                  title={`Code: ${material.code}\nStock: ${material.currentStock} ${material.muom}\nMin: ${material.minStock} ${material.muom}`}
+                >
+                  <span className="absolute -top-6 text-xs text-offWhite" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                    {material.currentStock}
+                  </span>
+                </div>
+                <span className="text-xs mt-1 text-offWhite text-center w-full truncate">{material.code}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 // Material Management Page - Now with Form and Table (Expanded)
@@ -664,8 +747,8 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
     }
   };
 
-  // Filtered materials based on search term and material type
-  const filteredMaterials = materials.filter(material => {
+  // Filtered materials based on search term and material type for the table
+  const filteredMaterialsTable = materials.filter(material => {
     const matchesSearchTerm = searchTerm === '' ||
       material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       material.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -682,7 +765,105 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
       <h1 className="text-4xl font-extrabold text-offWhite mb-8">Materials Management</h1>
       <p className="text-lightGreen mb-6">Manage your raw material inventory. Add, edit, and delete materials.</p>
 
-      {/* Material Entry/Edit Form */}
+      {/* 1. Stock Levels Overview Chart */}
+      <StockLevelChart materials={materials} materialTypes={materialTypes} colors={colors} />
+
+      {/* 2. Filter and Search Bar for the Table */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg mb-8 flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <label htmlFor="search" className="block text-offWhite text-sm font-bold mb-1">Search by Code or Description</label>
+          <input
+            type="text"
+            id="search"
+            placeholder="e.g., WOOD-001, Oak Timber"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10"
+          />
+        </div>
+        <div className="flex-1">
+          <label htmlFor="filterMaterialType" className="block text-offWhite text-sm font-bold mb-1">Filter by Material Type</label>
+          <select
+            id="filterMaterialType"
+            value={filterMaterialType}
+            onChange={(e) => setFilterMaterialType(e.target.value)}
+            // Unified styling for select elements
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen bg-white/10"
+          >
+            {/* Add an empty option to clear the filter */}
+            <option value="" className="text-deepGray bg-offWhite">All Types</option> 
+            {materialTypes.slice(1).map(type => ( // Slice to skip the initial empty option
+              // Changed option class to reflect consistent styling
+              <option key={type} value={type} className="text-deepGray bg-offWhite">{type}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* 3. Materials List/Table */}
+      <div className="bg-darkGreen p-6 rounded-xl shadow-lg mb-8"> {/* Added mb-8 for spacing */}
+        <h2 className="text-2xl font-bold text-offWhite mb-4">Current Materials</h2>
+        {loading && <p className="text-lightGreen">Loading materials...</p>}
+        {error && <p className="text-red-400">{error}</p>}
+        {!loading && materials.length === 0 && !error && (
+          <p className="text-offWhite/70">No materials added yet. Use the form below to add your first material!</p>
+        )}
+        {!loading && filteredMaterialsTable.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-mediumGreen">
+              <thead>
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Code</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Description</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Material Type</th> {/* New header */}
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">MUOM</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Conversion Factor</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">MCP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Current Stock (MUOM)</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Min Stock</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Supplier</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-mediumGreen">
+                {filteredMaterialsTable.map(material => (
+                  <tr key={material.id} className="hover:bg-mediumGreen transition-colors duration-150">
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-offWhite">{material.code}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.description}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.materialType}</td> {/* Display material type */}
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.puom}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.pcp?.toFixed(4)}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.muom}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{typeof material.conversionFactor === 'number' ? material.conversionFactor.toFixed(6) : material.conversionFactor}</td> {/* Formatted to 6 decimal places */}
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{typeof material.mcp === 'number' ? material.mcp.toFixed(6) : material.mcp}</td> {/* Formatted to 6 decimal places */}
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.currentStock}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.minStock}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.supplier}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => handleEdit(material)}
+                        className="text-accentGold hover:text-yellow-400 mr-3 transition-colors duration-200"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(material.id)}
+                        className="text-red-400 hover:text-red-500 transition-colors duration-200"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Material Entry/Edit Form */}
       <div className="bg-mediumGreen p-6 rounded-xl shadow-lg mb-8">
         <h2 className="text-2xl font-bold text-offWhite mb-4">{editingMaterialId ? 'Edit Material' : 'Add New Material'}</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -780,104 +961,6 @@ function MaterialManagementPage({ onInternalNav, db, userId }) {
             </button>
           </div>
         </form>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg mb-8 flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <label htmlFor="search" className="block text-offWhite text-sm font-bold mb-1">Search by Code or Description</label>
-          <input
-            type="text"
-            id="search"
-            placeholder="e.g., WOOD-001, Oak Timber"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:shadow-outline bg-white/10"
-          />
-        </div>
-        <div className="flex-1">
-          <label htmlFor="filterMaterialType" className="block text-offWhite text-sm font-bold mb-1">Filter by Material Type</label>
-          <select
-            id="filterMaterialType"
-            value={filterMaterialType}
-            onChange={(e) => setFilterMaterialType(e.target.value)}
-            // Unified styling for select elements
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-offWhite leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen bg-white/10"
-          >
-            {/* Add an empty option to clear the filter */}
-            <option value="" className="text-deepGray bg-offWhite">All Types</option> 
-            {materialTypes.slice(1).map(type => ( // Slice to skip the initial empty option
-              // Changed option class to reflect consistent styling
-              <option key={type} value={type} className="text-deepGray bg-offWhite">{type}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Materials List/Table */}
-      <div className="bg-darkGreen p-6 rounded-xl shadow-lg">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">Current Materials</h2>
-        {loading && <p className="text-lightGreen">Loading materials...</p>}
-        {error && <p className="text-red-400">{error}</p>}
-        {!loading && materials.length === 0 && !error && (
-          <p className="text-offWhite/70">No materials added yet. Use the form above to add your first material!</p>
-        )}
-        {!loading && filteredMaterials.length === 0 && materials.length > 0 && !error && (
-          <p className="text-offWhite/70">No materials match your current search and filter criteria.</p>
-        )}
-        {!loading && filteredMaterials.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-mediumGreen">
-              <thead>
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Code</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Description</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Material Type</th> {/* New header */}
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PUOM</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">PCP</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">MUOM</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Conversion Factor</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">MCP</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Current Stock (MUOM)</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Min Stock</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Supplier</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider bg-mediumGreen text-white">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-mediumGreen">
-                {filteredMaterials.map(material => (
-                  <tr key={material.id} className="hover:bg-mediumGreen transition-colors duration-150">
-                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-offWhite">{material.code}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.description}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.materialType}</td> {/* Display material type */}
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.puom}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.pcp?.toFixed(4)}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.muom}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.conversionFactor?.toFixed(6)}</td> {/* Formatted to 6 decimal places */}
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">£{material.mcp?.toFixed(6)}</td> {/* Formatted to 6 decimal places */}
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.currentStock}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.minStock}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-offWhite">{material.supplier}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(material)}
-                        className="text-accentGold hover:text-yellow-400 mr-3 transition-colors duration-200"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(material.id)}
-                        className="text-red-400 hover:text-red-500 transition-colors duration-200"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
 
