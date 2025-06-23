@@ -1,9 +1,12 @@
+/* src/index.css */
+/* FIX: Moved @import rule to the very top as required by PostCSS. */
+
+/* Import Poppins font from Google Fonts - MUST BE AT THE VERY TOP */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import Poppins font from Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
 
 /* Basic body styling (will be covered by deepGray utility after Tailwind config update) */
 body {
