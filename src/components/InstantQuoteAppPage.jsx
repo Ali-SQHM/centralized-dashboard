@@ -1,19 +1,27 @@
 // src/components/InstantQuoteAppPage.jsx
 // Provides the user interface and logic for generating instant quotes for custom canvases.
-// Fetches material data from Firestore for calculations and allows saving quotes to Firestore.
-// FIX: Corrected scope of 'breakdown' object within calculatePreliminaryPrice function.
-// ENHANCEMENTS:
-// - Robust error handling with try-catch blocks to prevent UI crashes.
-// - Extensive console.log statements for debugging finish options and bracing calculations.
-// - Refined Finish options based on Fabric Type, including "Unprimed".
-// - Tray Frame options simplified to "None", "White", "Black", "Wood" with dynamic code generation.
-// - Advanced Bracing options: "No Braces", "Standard (Automatic)", and "Custom Braces".
+// Fix: UNP (Unprimed) and NAT (Natural) are no longer Firestore materials; handled as direct zero cost options.
+// Fix: Tray Frame Wood codes are T25N and T32N.
+// Fix: Adjusted '12oz' fabricType comparison to lowercase 'oz' to match expected Firestore code.
+// Fix: Finish dropdown displays user-friendly descriptions.
+// Fix: Corrected brace material lookup to 'CB' code.
+// Fix: When "Add Fabric to Panel" is checked, default fabricType to '12oz' to prevent finish dropdown "jumping".
+// REFINEMENTS:
+// - Precise Finish options logic based on Fabric Type and Product Type.
+// - Enhanced robustness for material data access and calculations.
+// - Automatic resetting of dependent dropdown states (Finish, Tray Frame) upon upstream changes.
+// - Form layout adjusted for better readability of longer descriptions.
+// - DEFAULT BRACING MODE IS NOW "Standard (Automatic)". Custom inputs appear only when "Custom" is selected.
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { collection, query, onSnapshot, addDoc } from 'firebase/firestore'; 
 import { colors, commonUnits, materialTypes } from '../utils/constants'; 
 
 function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) { 
+  // Helper function for parsing numbers, memoized for performance
+  const parseNum = useCallback((value) => parseFloat(value) || 0, []);
+
+  // --- State Variables ---
   const [productType, setProductType] = useState('CAN'); 
   const [height, setHeight] = useState('');
   const [width, setWidth] = useState('');
@@ -22,19 +30,23 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
   const [minorAxis, setMinorAxis] = useState('');
   const [depth, setDepth] = useState(''); 
   const [unit, setUnit] = useState('CM');
-  const [fabricType, setFabricType] = useState('');
-  const [finish, setFinish] = useState('');
+  const [fabricType, setFabricType] = useState(''); // This now applies to CAN, and stretched PAN/RND/OVL
+  const [finish, setFinish] = useState(''); // Finish for fabric on CAN/RND/OVL, or panel surface for PAN
   const [trayFrameAddon, setTrayFrameAddon] = useState(''); 
-  const [bracingMode, setBracingMode] = useState('None'); // 'None', 'Standard', 'Custom'
+  const [bracingMode, setBracingMode] = useState('Standard'); 
   const [customHBraces, setCustomHBraces] = useState(0);
   const [customWBraces, setCustomWBraces] = useState(0);
+  
+  // New product-specific states
+  const [roundOption, setRoundOption] = useState('Stretched'); // 'FrameOnly', 'Stretched' for RND/OVL
+  const [panelHasFabric, setPanelHasFabric] = useState(false); // true if adding fabric to a NAT panel
+
   const [sku, setSku] = useState('');
   const [quotePrice, setQuotePrice] = useState(null);
   const [materialsData, setMaterialsData] = useState([]);
   const [loadingMaterials, setLoadingMaterials] = useState(true);
   const [errorMaterials, setErrorMaterials] = useState(null);
   const [quoteSaveMessage, setQuoteSaveMessage] = useState('');
-
 
   const [costBreakdown, setCostBreakdown] = useState({
     deliveryCost: 0, 
@@ -50,7 +62,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
   });
 
 
-  // Firestore collection reference for materials (PUBLICLY ACCESSIBLE)
+  // --- Firestore References ---
   const getPublicMaterialsCollectionRef = () => {
     if (!db || !firestoreAppId) {
       console.error("Firestore DB or App ID not available for public materials reference in InstantQuoteAppPage.");
@@ -59,7 +71,6 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
     return collection(db, `artifacts/${firestoreAppId}/public/data/materials`);
   };
 
-  // Firestore collection reference for quotes (PUBLICLY ACCESSIBLE for now)
   const getPublicQuotesCollectionRef = () => {
     if (!db || !firestoreAppId) {
       console.error("Firestore DB or App ID not available for public quotes reference in InstantQuoteAppPage.");
@@ -68,7 +79,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
     return collection(db, `artifacts/${firestoreAppId}/public/data/quotes`);
   };
 
-  // Fetch all materials on component mount
+  // --- Fetch Materials Effect ---
   useEffect(() => {
     if (!db || !firestoreAppId) {
       console.log("Skipping material fetch for Quote App: DB or firestoreAppId not ready.");
@@ -94,7 +105,9 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
       setLoadingMaterials(false);
       setErrorMaterials(null);
       console.log("--- DEBUGGING LOG --- Materials fetched successfully. Total:", fetchedMaterials.length);
-      console.log("--- DEBUGGING LOG --- Fetched Materials Sample (first 5):", fetchedMaterials.slice(0, 5));
+      const materialTypesFound = new Set(fetchedMaterials.map(m => m.materialType));
+      console.log("--- DEBUGGING LOG --- Unique Material Types Found in Firestore:", Array.from(materialTypesFound));
+      // console.log("--- DEBUGGING LOG --- Fetched Materials Data (full list):", fetchedMaterials); // Uncomment for full data dump
     }, (err) => {
       console.error("Error fetching materials for Quote App:", err);
       setErrorMaterials(`Failed to load material options: ${err.message}. Ensure Firestore security rules allow read access to /artifacts/${firestoreAppId}/public/data/materials.`);
@@ -105,21 +118,25 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
   }, [db, firestoreAppId]);
 
 
-  // Helper to filter materials by type
-  const getMaterialsByType = (type) => {
+  // --- Memoized Material Getters ---
+  const getMaterialsByType = useCallback((type) => {
+    if (!materialsData || materialsData.length === 0) {
+        return [];
+    }
     return materialsData.filter(m => m.materialType === type);
-  };
+  }, [materialsData]);
 
-  // Helper to get material code/data from code (for dynamic dropdowns and calculations)
-  const getMaterialByCode = (code) => {
-    const foundMaterial = materialsData.find(m => m.code === code);
-    return foundMaterial;
-  };
+  const getMaterialByCode = useCallback((code) => {
+    if (!materialsData || materialsData.length === 0 || !code) {
+        return null;
+    }
+    return materialsData.find(m => m.code === code);
+  }, [materialsData]);
 
-  // Memoized calculatePreliminaryPrice function
+
+  // --- Preliminary Price Calculation ---
   const calculatePreliminaryPrice = useCallback(() => {
     try {
-        // Initialize breakdown for THIS calculation cycle inside the function
         let breakdown = {
             deliveryCost: 0, 
             fabricCost: 0,
@@ -135,12 +152,10 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
 
         let cumulativeCost = 0;
 
-        const parseNum = (value) => parseFloat(value) || 0;
         const MARKUP_PERCENTAGE = 0.20; 
         const MINIMUM_QUOTE_PRICE = 25.00; 
-        const BRACE_STANDARD_INTERVAL_CM = 90; // Standard interval for automatic bracing
+        const BRACE_STANDARD_INTERVAL_CM = 90; 
 
-        // Convert dimensions to CM for consistent internal calculations
         const convertToCm = (val) => (unit === 'IN' ? parseNum(val) * 2.54 : parseNum(val));
         const currentHeight = convertToCm(height);
         const currentWidth = convertToCm(width);
@@ -151,7 +166,6 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         let productAreaCm2 = 0; 
         let productPerimeterCm = 0;
 
-        // Determine product dimensions based on type
         if (productType === 'CAN' || productType === 'PAN' || productType === 'TRA' || productType === 'STB') {
             productAreaCm2 = currentHeight * currentWidth;
             productPerimeterCm = 2 * (currentHeight + currentWidth);
@@ -165,7 +179,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             productPerimeterCm = Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)));
         }
 
-        // 1. Dynamic Delivery Cost Calculation
+        // 1. Delivery Cost (remains largely the same)
         let deliveryAreaForBanding = 0;
         if (productType === 'STB') {
             const maxDim = Math.max(currentHeight, currentWidth);
@@ -194,23 +208,68 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         }
         cumulativeCost += breakdown.deliveryCost;
         
-        // 2. Fabric Cost
-        const selectedFabric = getMaterialByCode(fabricType);
-        if (selectedFabric && productAreaCm2 > 0) {
-            breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
-            cumulativeCost += breakdown.fabricCost;
+        // 2. Fabric Cost & Finish Cost (conditional based on product type and options)
+        if (productType === 'CAN' || productType === 'RND' || productType === 'OVL') {
+            if (productType === 'RND' || productType === 'OVL') {
+                if (roundOption === 'Stretched') { // Only 12oz for stretched rounds/ovals
+                    const selectedFabric = getMaterialByCode('12oz'); // Fabric is fixed to 12oz
+                    if (selectedFabric && productAreaCm2 > 0) {
+                        breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
+                        cumulativeCost += breakdown.fabricCost;
+                    }
+                } else { // FrameOnly option, no fabric cost
+                    breakdown.fabricCost = 0;
+                }
+            } else { // Standard Canvas (CAN)
+                const selectedFabric = getMaterialByCode(fabricType);
+                if (selectedFabric && productAreaCm2 > 0) {
+                    breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
+                    cumulativeCost += breakdown.fabricCost;
+                }
+            }
+
+            // Finish cost for CAN, RND (Stretched), OVL (Stretched)
+            if (finish === 'UNP' || finish === 'NAT') { 
+                breakdown.finishCost = 0;
+            } else {
+                const selectedFinish = getMaterialByCode(finish);
+                if (selectedFinish && productAreaCm2 > 0) {
+                    breakdown.finishCost = (selectedFinish.mcp || 0) * productAreaCm2;
+                    cumulativeCost += breakdown.finishCost;
+                }
+            }
+        } else if (productType === 'PAN') {
+            // Panel has its own surface finish OR a stretched fabric
+            if (panelHasFabric) {
+                const selectedFabric = getMaterialByCode(fabricType); // Fabric for the panel
+                if (selectedFabric && productAreaCm2 > 0) {
+                    breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
+                    cumulativeCost += breakdown.fabricCost;
+                }
+                // Finish cost for fabric on panel
+                if (finish === 'UNP' || finish === 'NAT') { // NAT here for fabric on panel
+                    breakdown.finishCost = 0;
+                } else {
+                    const selectedFinish = getMaterialByCode(finish);
+                    if (selectedFinish && productAreaCm2 > 0) {
+                        breakdown.finishCost = (selectedFinish.mcp || 0) * productAreaCm2;
+                        cumulativeCost += breakdown.finishCost;
+                    }
+                }
+            } else { // Bare Panel, finish applies to the panel itself
+                if (finish === 'UNP' || finish === 'NAT') { // Panel is Natural/Unfinished
+                    breakdown.finishCost = 0;
+                } else {
+                    const selectedFinish = getMaterialByCode(finish); // Primed White/Black for panel
+                    if (selectedFinish && productAreaCm2 > 0) {
+                        breakdown.finishCost = (selectedFinish.mcp || 0) * productAreaCm2;
+                        cumulativeCost += breakdown.finishCost;
+                    }
+                }
+            }
         }
 
-        // 3. Finish Cost (Zero if "Unprimed")
-        const selectedFinish = getMaterialByCode(finish);
-        if (finish === 'UNP') { // "Unprimed" option has 0 cost
-            breakdown.finishCost = 0;
-        } else if (selectedFinish && productAreaCm2 > 0) {
-            breakdown.finishCost = (selectedFinish.mcp || 0) * productAreaCm2;
-            cumulativeCost += breakdown.finishCost;
-        }
-
-        // 4. Stretcher Bar/Profile Cost (applies to CAN, PAN, RND, OVL, STB)
+        // 3. Stretcher Bar/Profile Cost (applies to CAN, PAN, RND, OVL, STB)
         const profileMaterialCode = depth ? `P${depth}` : ''; 
         const selectedDepthProfile = getMaterialByCode(profileMaterialCode); 
         
@@ -219,26 +278,29 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             cumulativeCost += breakdown.profileCost;
         }
 
-        // 5. Tray Frame Add-on Cost (for CAN, PAN if depth is not D44)
+        // 4. Tray Frame Add-on Cost (for CAN, PAN if depth is not D44)
         let actualTrayFrameCode = '';
         if (trayFrameAddon === 'White') {
             actualTrayFrameCode = `T${depth}W`;
         } else if (trayFrameAddon === 'Black') {
             actualTrayFrameCode = `T${depth}B`;
         } else if (trayFrameAddon === 'Wood') {
-            actualTrayFrameCode = `T${depth}Wd`;
+            actualTrayFrameCode = `T${depth}N`; 
         }
         
         const selectedTrayFrame = getMaterialByCode(actualTrayFrameCode);
-        const trayFrameValidForProduct = (productType === 'CAN' || productType === 'PAN') && depth !== '44';
+        const trayFrameValidForProduct = (productType === 'CAN' || productType === 'PAN' || productType === 'TRA') && depth !== '44'; 
         
         if (selectedTrayFrame && trayFrameValidForProduct && productPerimeterCm > 0) { 
             breakdown.trayFrameCost = (selectedTrayFrame.mcp || 0) * productPerimeterCm; 
             cumulativeCost += breakdown.trayFrameCost;
         }
 
-        // 6. Custom Braces Cost (for CAN, STB)
-        const braceMaterial = getMaterialsByType('Wood').find(m => m.code.includes('BRACE')); 
+        // 5. Braces Cost (for CAN, STB) - Corrected lookup for 'CB'
+        const braceMaterial = getMaterialByCode('CB'); // Direct lookup by code 'CB'
+        console.log("--- DEBUGGING LOG (Calculate Braces) --- braceMaterial found:", braceMaterial);
+        console.log("--- DEBUGGING LOG (Calculate Braces) --- braceMaterial.mcp:", braceMaterial?.mcp);
+        
         let currentHBraces = 0;
         let currentWBraces = 0;
 
@@ -249,28 +311,34 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             if (currentHeight > BRACE_STANDARD_INTERVAL_CM) {
                 currentWBraces = Math.floor(currentHeight / BRACE_STANDARD_INTERVAL_CM);
             }
-            currentHBraces = Math.min(currentHBraces, 3); // Limit to max 3 braces
-            currentWBraces = Math.min(currentWBraces, 3); // Limit to max 3 braces
-            console.log(`--- DEBUGGING LOG --- Bracing Mode: Standard. Calculated H: ${currentHBraces}, W: ${currentWBraces}`);
+            currentHBraces = Math.min(currentHBraces, 3); 
+            currentWBraces = Math.min(currentWBraces, 3); 
+            console.log(`--- DEBUGGING LOG (Calculate) --- Bracing Mode: Standard. Calculated H: ${currentHBraces}, W: ${currentWBraces}`);
 
         } else if (bracingMode === 'Custom') {
             currentHBraces = parseNum(customHBraces);
             currentWBraces = parseNum(customWBraces);
-            console.log(`--- DEBUGGING LOG --- Bracing Mode: Custom. Input H: ${currentHBraces}, W: ${currentWBraces}`);
+            console.log(`--- DEBUGGING LOG (Calculate) --- Bracing Mode: Custom. Input H: ${currentHBraces}, W: ${currentWBraces}`);
         }
-        console.log(`--- DEBUGGING LOG --- Final Brace Counts for Cost: H=${currentHBraces}, W=${currentWBraces}`);
+        console.log(`--- DEBUGGING LOG (Calculate) --- Final Brace Counts for Cost: H=${currentHBraces}, W=${currentWBraces}`);
 
         const totalCalculatedBracesCount = currentHBraces + currentWBraces;
+        console.log("--- DEBUGGING LOG (Calculate Braces) --- totalCalculatedBracesCount:", totalCalculatedBracesCount);
 
         if (braceMaterial && totalCalculatedBracesCount > 0 && totalCalculatedBracesCount <= 6) { 
             const totalBraceLengthCm = 
                 (currentHBraces * currentWidth) + 
                 (currentWBraces * currentHeight);
+            console.log("--- DEBUGGING LOG (Calculate Braces) --- totalBraceLengthCm:", totalBraceLengthCm);
+
             breakdown.braceCost = (braceMaterial.mcp || 0) * totalBraceLengthCm;
+            console.log("--- DEBUGGING LOG (Calculate Braces) --- Calculated breakdown.braceCost:", breakdown.braceCost);
             cumulativeCost += breakdown.braceCost;
+        } else {
+            console.log("--- DEBUGGING LOG (Calculate Braces) --- Brace cost not calculated: Conditions not met. braceMaterial:", braceMaterial, "totalCalculatedBracesCount:", totalCalculatedBracesCount);
         }
         
-        // 7. Packaging Cost (dynamic based on product type and specific codes BUB, CAR)
+        // 6. Packaging Cost (dynamic based on product type and specific codes BUB, CAR)
         const bubbleWrapMaterial = getMaterialByCode('BUB'); 
         const cardboardMaterial = getMaterialByCode('CAR');     
 
@@ -300,87 +368,97 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         return finalPriceWithFloor;
     } catch (error) {
         console.error("--- CRITICAL ERROR IN calculatePreliminaryPrice ---", error);
-        setQuotePrice('ERROR'); // Display an error state in UI
-        setCostBreakdown({ // Reset breakdown to avoid displaying incorrect numbers
+        setQuotePrice('ERROR'); 
+        setCostBreakdown({ 
             deliveryCost: 0, fabricCost: 0, finishCost: 0, profileCost: 0, 
             trayFrameCost: 0, braceCost: 0, packagingCost: 0, subtotal: 0,
             markupAmount: 0, finalPriceNet: 0, 
         });
         return null;
     }
-  }, [productType, height, width, diameter, majorAxis, minorAxis, depth, unit, fabricType, finish, trayFrameAddon, bracingMode, customHBraces, customWBraces, getMaterialByCode, getMaterialsByType]);
+  }, [productType, height, width, diameter, majorAxis, minorAxis, depth, unit, fabricType, finish, trayFrameAddon, bracingMode, customHBraces, customWBraces, getMaterialByCode, getMaterialsByType, parseNum, roundOption, panelHasFabric]);
 
-  // SKU Generation Logic and Preliminary Price Calculation
+  // --- Main Effect for SKU Generation and Price Update ---
   useEffect(() => {
+    if (loadingMaterials || errorMaterials || materialsData.length === 0) {
+        setSku('Loading...');
+        setQuotePrice('£0.00');
+        return;
+    }
+
     try {
         let generatedSku = '';
-        let currentPrice = 0; 
+        let currentPrice = null; 
 
-        const parseNum = (value) => parseFloat(value) || 0;
         const BRACE_STANDARD_INTERVAL_CM = 90;
-        const convertToCm = (val) => (unit === 'IN' ? parseNum(val) * 2.54 : parseNum(val)); // Needed for SKU brace calculation
+        const convertToCm = (val) => (unit === 'IN' ? parseNum(val) * 2.54 : parseNum(val)); 
 
-        // --- SKU Generation Logic ---
+        let fabricAbbr = '';
+        let finishAbbr = '';
+        let trayFramePart = '';
+        let customBracingPart = '';
+        let validDimensions = false;
+        let validDepth = false;
+        let validFabric = false;
+        let validFinish = false;
+        
+        // Common logic for fabricAbbr
+        if (fabricType) { // only if a fabric is selected/determined
+            const fabricObj = getMaterialByCode(fabricType);
+            fabricAbbr = fabricObj?.code || '';
+        }
+        
+        // Common logic for finishAbbr (transforms to SKU codes)
+        finishAbbr = finish; 
+        if (finishAbbr === 'WPR') finishAbbr = 'PRW'; 
+        if (finishAbbr === 'BPR') finishAbbr = 'PRB';
+        if (finishAbbr === 'CLR') finishAbbr = 'CSL'; 
+
+        // Common depth abbreviation logic
+        const commonDepthsSku = { 
+            '25': 'P25', '32': 'P32', '40': 'P40', '44': 'P44', 
+            '24': 'P24', '30': 'P30', '36': 'P36', '42': 'P42'  
+        }; 
+        const selectedDepthAbbr = commonDepthsSku[depth] || ''; 
+        validDepth = selectedDepthAbbr !== '';
+
+        // Common tray frame logic
+        const trayFrameValid = (productType === 'CAN' || productType === 'PAN' || productType === 'TRA') && depth !== '44'; 
+        let trayFrameSKUCode = '';
+        if (trayFrameAddon === 'White') {
+            trayFrameSKUCode = `T${depth}W`;
+        } else if (trayFrameAddon === 'Black') {
+            trayFrameSKUCode = `T${depth}B`;
+        } else if (trayFrameAddon === 'Wood') {
+            trayFrameSKUCode = `T${depth}N`; 
+        }
+        if (trayFrameSKUCode && trayFrameValid) { 
+            trayFramePart = `-${trayFrameSKUCode}`; 
+        }
+
+        // Common bracing logic
+        let currentHBracesForSku = 0;
+        let currentWBracesForSku = 0;
+        if (bracingMode === 'Standard') {
+            const currentHeightCm = convertToCm(height);
+            const currentWidthCm = convertToCm(width);
+            currentHBracesForSku = Math.min(Math.floor(currentWidthCm / BRACE_STANDARD_INTERVAL_CM), 3);
+            currentWBracesForSku = Math.min(Math.floor(currentHeightCm / BRACE_STANDARD_INTERVAL_CM), 3);
+        } else if (bracingMode === 'Custom') {
+            currentHBracesForSku = parseNum(customHBraces);
+            currentWBracesForSku = parseNum(customWBraces);
+        }
+        const totalCustomBraces = currentHBracesForSku + currentWBracesForSku;
+        if (totalCustomBraces > 0 && totalCustomBraces <= 6 && (productType === 'CAN' || productType === 'STB')) { 
+            customBracingPart = `-H${currentHBracesForSku}W${currentWBracesForSku}`;
+        }
+
+
         switch (productType) {
           case 'CAN': 
-            const canvasDepthsSku = { '25': 'P25', '32': 'P32', '40': 'P40', '44': 'P44' }; 
-            const selectedDepthAbbr = canvasDepthsSku[depth] || ''; 
-            const fabricObj = getMaterialByCode(fabricType);
-            const finishObj = getMaterialByCode(finish);
-            let fabricAbbr = fabricObj?.code || ''; 
-            let finishAbbr = finish === 'UNP' ? 'UNP' : (finishObj?.code || ''); 
-            
-            if (finishAbbr === 'WPR') finishAbbr = 'PRW'; 
-            if (finishAbbr === 'BPR') finishAbbr = 'PRB';
-            if (finishAbbr === 'CLR') finishAbbr = 'CSL'; 
-
-            if ((fabricAbbr === 'OIL' || fabricAbbr === 'SUP') && finishAbbr !== 'NAT' && finishAbbr !== 'UNP') { 
-                finishAbbr = 'NAT'; 
-            } else if (fabricAbbr === '12OZ' && !['UP', 'PRW', 'PRB', 'UNP'].includes(finishAbbr)) { 
-                finishAbbr = 'UP'; 
-            } else if (fabricAbbr === 'LIN' && !['UP', 'PRW', 'CSL', 'UNP'].includes(finishAbbr)) { 
-                finishAbbr = 'UP'; 
-            }
-
-            let trayFramePart = '';
-            const trayFrameValid = (productType === 'CAN' || productType === 'PAN') && depth !== '44'; 
-            
-            let trayFrameSKUCode = '';
-            if (trayFrameAddon === 'White') {
-                trayFrameSKUCode = `T${depth}W`;
-            } else if (trayFrameAddon === 'Black') {
-                trayFrameSKUCode = `T${depth}B`;
-            } else if (trayFrameAddon === 'Wood') {
-                trayFrameSKUCode = `T${depth}Wd`;
-            }
-
-            if (trayFrameSKUCode && trayFrameValid) { 
-              trayFramePart = `-${trayFrameSKUCode}`; 
-            }
-
-            let customBracingPart = '';
-            let currentHBracesForSku = 0;
-            let currentWBracesForSku = 0;
-
-            if (bracingMode === 'Standard') {
-                const currentHeightCm = convertToCm(height);
-                const currentWidthCm = convertToCm(width);
-                currentHBracesForSku = Math.min(Math.floor(currentWidthCm / BRACE_STANDARD_INTERVAL_CM), 3);
-                currentWBracesForSku = Math.min(Math.floor(currentHeightCm / BRACE_STANDARD_INTERVAL_CM), 3);
-            } else if (bracingMode === 'Custom') {
-                currentHBracesForSku = parseNum(customHBraces);
-                currentWBracesForSku = parseNum(customWBraces);
-            }
-
-            const totalCustomBraces = currentHBracesForSku + currentWBracesForSku;
-            if (totalCustomBraces > 0 && totalCustomBraces <= 6) { 
-              customBracingPart = `-H${currentHBracesForSku}W${currentWBracesForSku}`;
-            }
-
-            const validDimensions = (parseNum(height) > 0 && parseNum(width) > 0);
-            const validDepth = selectedDepthAbbr !== '';
-            const validFabric = fabricAbbr !== '';
-            const validFinish = finishAbbr !== '';
+            validDimensions = (parseNum(height) > 0 && parseNum(width) > 0);
+            validFabric = fabricAbbr !== '';
+            validFinish = finishAbbr !== '';
 
             if (validDimensions && validDepth && validFabric && validFinish) {
                 generatedSku = `CAN-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-${selectedDepthAbbr}-${unit}-${fabricAbbr}-${finishAbbr}${trayFramePart}${customBracingPart}`;
@@ -392,120 +470,98 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             break;
 
           case 'PAN': 
-              const panelDepthsSku = { '25': 'P25', '32': 'P32', '44': 'P44' }; 
-              const panelDepthAbbr = panelDepthsSku[depth] || 'DXX';
-              const panelFabricObj = getMaterialByCode(fabricType);
-              const panelFabricAbbr = panelFabricObj?.code || 'BARE'; 
-              const panelFinishObj = getMaterialByCode(finish);
-              let panelFinishAbbr = finish === 'UNP' ? 'UNP' : (panelFinishObj?.code || 'NAT'); 
-                if (panelFinishAbbr === 'WPR') panelFinishAbbr = 'PRW'; 
-                if (panelFinishAbbr === 'BPR') panelFinishAbbr = 'PRB';
-                if (panelFinishAbbr === 'CLR') panelFinishAbbr = 'CSL'; 
+            validDimensions = (parseNum(height) > 0 && parseNum(width) > 0);
+            validFinish = finishAbbr !== '';
 
-              const panelTrayFrameValid = (productType === 'CAN' || productType === 'PAN') && depth !== '44';
-              let panelTrayFrameSKUCode = '';
-                if (trayFrameAddon === 'White') {
-                    panelTrayFrameSKUCode = `T${depth}W`;
-                } else if (trayFrameAddon === 'Black') {
-                    panelTrayFrameSKUCode = `T${depth}B`;
-                } else if (trayFrameAddon === 'Wood') {
-                    panelTrayFrameSKUCode = `T${depth}Wd`;
-                }
-              const panelTrayFramePart = (panelTrayFrameSKUCode && panelTrayFrameValid) ? `-${panelTrayFrameSKUCode}` : '';
+            if (panelHasFabric) {
+                validFabric = fabricAbbr !== '';
+            } else {
+                validFabric = true; 
+            }
 
-              if (parseNum(height) > 0 && parseNum(width) > 0 && panelDepthAbbr !== 'DXX') {
-                generatedSku = `PAN-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-${panelDepthAbbr}-${unit}-${panelFabricAbbr}-${panelFinishAbbr}${panelTrayFramePart}`;
+            if (validDimensions && validDepth && validFinish && validFabric) {
+                const fabricPart = panelHasFabric ? `-${fabricAbbr}` : ''; 
+                generatedSku = `PAN-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-${selectedDepthAbbr}-${unit}${fabricPart}-${finishAbbr}${trayFramePart}`;
                 currentPrice = calculatePreliminaryPrice();
-              } else {
+            } else {
                 generatedSku = 'Incomplete configuration';
                 currentPrice = null;
-              }
-              break;
+            }
+            break;
 
           case 'RND': 
-              const rndDepthsSku = { '24': 'P24', '30': 'P30', '36': 'P36', '42': 'P42' }; 
-              const rndDepthAbbr = rndDepthsSku[depth] || 'DXX';
-              const rndFabricObj = getMaterialByCode(fabricType);
-              const rndFabricAbbr = rndFabricObj?.code || '12OZ';
-              const rndFinishObj = getMaterialByCode(finish);
-              let rndFinishAbbr = finish === 'UNP' ? 'UNP' : (rndFinishObj?.code || ''); 
-                if (rndFinishAbbr === 'WPR') rndFinishAbbr = 'PRW'; 
-                if (rndFinishAbbr === 'BPR') rndFinishAbbr = 'PRB';
-                if (rndFinishAbbr === 'CLR') rndFinishAbbr = 'CSL'; 
-              
-              if (parseNum(diameter) > 0 && rndDepthAbbr !== 'DXX') {
-                generatedSku = `RND-${parseNum(diameter).toFixed(1)}-${rndDepthAbbr}-${unit}-${rndFabricAbbr}${rndFinishAbbr ? '-' + rndFinishAbbr : ''}`;
+            validDimensions = parseNum(diameter) > 0;
+            if (roundOption === 'Stretched') {
+                fabricAbbr = '12oz'; 
+                validFabric = true;
+                validFinish = finishAbbr !== '';
+            } else { // FrameOnly
+                fabricAbbr = 'NOFAB'; 
+                finishAbbr = 'NOFIN'; 
+                validFabric = true;
+                validFinish = true;
+            }
+            
+            if (validDimensions && validDepth && validFabric && validFinish) {
+                const fabricFinishPart = (roundOption === 'Stretched' && finishAbbr) ? `-${fabricAbbr}-${finishAbbr}` : (roundOption === 'FrameOnly' ? '' : `-NOFAB-${finishAbbr}`);
+                generatedSku = `RND-${parseNum(diameter).toFixed(1)}-${selectedDepthAbbr}-${unit}${fabricFinishPart}`;
                 currentPrice = calculatePreliminaryPrice();
-              } else {
+            } else {
                 generatedSku = 'Incomplete configuration';
                 currentPrice = null;
-              }
-              break;
+            }
+            break;
 
           case 'OVL': 
-              const ovlDepthsSku = { '24': 'P24', '30': 'P30', '36': 'P36', '42': 'P42' }; 
-              const ovlDepthAbbr = ovlDepthsSku[depth] || 'DXX';
-              const ovlFabricObj = getMaterialByCode(fabricType);
-              const ovlFabricAbbr = ovlFabricObj?.code || '12OZ';
-              const ovlFinishObj = getMaterialByCode(finish);
-              let ovlFinishAbbr = finish === 'UNP' ? 'UNP' : (ovlFinishObj?.code || ''); 
-                if (ovlFinishAbbr === 'WPR') ovlFinishAbbr = 'PRW'; 
-                if (ovlFinishAbbr === 'BPR') ovlFinishAbbr = 'PRB';
-                if (ovlFinishAbbr === 'CLR') ovlFinishAbbr = 'CSL'; 
+            validDimensions = (parseNum(majorAxis) > 0 && parseNum(minorAxis) > 0);
+            if (roundOption === 'Stretched') {
+                fabricAbbr = '12oz'; 
+                validFabric = true;
+                validFinish = finishAbbr !== '';
+            } else { // FrameOnly
+                fabricAbbr = 'NOFAB'; 
+                finishAbbr = 'NOFIN'; 
+                validFabric = true;
+                validFinish = true;
+            }
 
-              if (parseNum(majorAxis) > 0 && parseNum(minorAxis) > 0 && ovlDepthAbbr !== 'DXX') {
-                generatedSku = `OVL-${parseNum(majorAxis).toFixed(1)}-${parseNum(minorAxis).toFixed(1)}-${ovlDepthAbbr}-${unit}-${ovlFabricAbbr}${ovlFinishAbbr ? '-' + ovlFinishAbbr : ''}`;
+            if (validDimensions && validDepth && validFabric && validFinish) {
+                const fabricFinishPart = (roundOption === 'Stretched' && finishAbbr) ? `-${fabricAbbr}-${finishAbbr}` : (roundOption === 'FrameOnly' ? '' : `-NOFAB-${finishAbbr}`);
+                generatedSku = `OVL-${parseNum(majorAxis).toFixed(1)}-${parseNum(minorAxis).toFixed(1)}-${selectedDepthAbbr}-${unit}${fabricFinishPart}`;
                 currentPrice = calculatePreliminaryPrice();
-              } else {
+            } else {
                 generatedSku = 'Incomplete configuration';
                 currentPrice = null;
-              }
-              break;
+            }
+            break;
 
           case 'TRA': 
-              const trayFinishObj = getMaterialByCode(finish);
-              let trayFinishAbbr = finish === 'UNP' ? 'UNP' : (trayFinishObj?.code || 'NAT'); 
-                if (trayFinishAbbr === 'WPR') trayFinishAbbr = 'PRW'; 
-                if (trayFinishAbbr === 'BPR') trayFinishAbbr = 'PRB';
-                if (trayFinishAbbr === 'CLR') trayFinishAbbr = 'CSL'; 
-
-              if (parseNum(height) > 0 && parseNum(width) > 0) {
-                generatedSku = `TRA-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-PXX-${unit}-${trayFinishAbbr}`; 
+            validDimensions = (parseNum(height) > 0 && parseNum(width) > 0);
+            validFinish = finishAbbr !== ''; 
+            validFabric = true; 
+            
+            if (validDimensions && validFinish) { 
+                generatedSku = `TRA-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-PXX-${unit}-${finishAbbr}`; 
                 currentPrice = calculatePreliminaryPrice();
-              } else {
+            } else {
                 generatedSku = 'Incomplete configuration';
                 currentPrice = null;
-              }
-              break;
+            }
+            break;
 
           case 'STB': 
-              const stbDepthsSku = { '25': 'P25', '32': 'P32', '40': 'P40', '44': 'P44' }; 
-              const stbDepthAbbr = stbDepthsSku[depth] || 'DXX';
-              
-              let stbHBracesForSku = 0;
-              let stbWBracesForSku = 0;
+            validDimensions = (parseNum(height) > 0 && parseNum(width) > 0);
+            validFabric = true; 
+            validFinish = true; 
 
-              if (bracingMode === 'Standard') {
-                  const currentHeightCm = convertToCm(height);
-                  const currentWidthCm = convertToCm(width);
-                  stbHBracesForSku = Math.min(Math.floor(currentWidthCm / BRACE_STANDARD_INTERVAL_CM), 3);
-                  stbWBracesForSku = Math.min(Math.floor(currentHeightCm / BRACE_STANDARD_INTERVAL_CM), 3);
-              } else if (bracingMode === 'Custom') {
-                  stbHBracesForSku = parseNum(customHBraces);
-                  stbWBracesForSku = parseNum(customWBraces);
-              }
-
-              const stbTotalCustomBraces = stbHBracesForSku + stbWBracesForSku;
-              const stbCustomBracingPart = (stbTotalCustomBraces > 0 && stbTotalCustomBraces <= 6) ? `-H${stbHBracesForSku}W${stbWBracesForSku}` : '';
-
-              if (parseNum(height) > 0 && parseNum(width) > 0 && stbDepthAbbr !== 'DXX') {
-                generatedSku = `STB-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-${stbDepthAbbr}-${unit}${stbCustomBracingPart}`;
+            if (validDimensions && validDepth) {
+                generatedSku = `STB-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-${selectedDepthAbbr}-${unit}${customBracingPart}`;
                 currentPrice = calculatePreliminaryPrice();
-              } else {
+            } else {
                 generatedSku = 'Incomplete configuration';
                 currentPrice = null;
-              }
-              break;
+            }
+            break;
 
           default:
             generatedSku = 'Select a product type';
@@ -515,16 +571,17 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         setSku(generatedSku);
         setQuotePrice(currentPrice !== null ? `£${currentPrice.toFixed(2)}` : null);
         setQuoteSaveMessage(''); 
-    } catch (error) {
+    }
+    catch (error) {
         console.error("--- CRITICAL ERROR IN SKU Generation / Main useEffect ---", error);
         setSku('ERROR generating SKU');
         setQuotePrice('ERROR');
         setQuoteSaveMessage('An internal error occurred. Check console.');
     }
-  }, [productType, height, width, diameter, majorAxis, minorAxis, depth, unit, fabricType, finish, trayFrameAddon, bracingMode, customHBraces, customWBraces, getMaterialByCode, calculatePreliminaryPrice]); 
+  }, [productType, height, width, diameter, majorAxis, minorAxis, depth, unit, fabricType, finish, trayFrameAddon, bracingMode, customHBraces, customWBraces, getMaterialByCode, calculatePreliminaryPrice, materialsData, loadingMaterials, errorMaterials, parseNum, roundOption, panelHasFabric]); 
 
 
-  // Reset fields when product type changes
+  // --- Reset Fields on Product Type Change ---
   useEffect(() => {
     setHeight('');
     setWidth('');
@@ -534,11 +591,13 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
     setDepth('');
     setUnit('CM');
     setFabricType('');
-    setFinish('');
+    setFinish(''); 
     setTrayFrameAddon(''); 
-    setBracingMode('None');
+    setBracingMode('Standard'); 
     setCustomHBraces(0);
     setCustomWBraces(0);
+    setRoundOption('Stretched'); 
+    setPanelHasFabric(false); 
     setSku('');
     setQuotePrice(null);
     setQuoteSaveMessage('');
@@ -556,9 +615,51 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
     });
   }, [productType]);
 
+  // Reset finish when fabric type changes
+  useEffect(() => {
+      setFinish('');
+  }, [fabricType]);
 
-  // Define specific dropdown options based on fetched materials and blueprint rules
-  const getDepthOptions = () => {
+  // Reset tray frame when depth changes (since tray frames are depth-dependent)
+  useEffect(() => {
+      setTrayFrameAddon('');
+  }, [depth]);
+
+  // Reset fabric/finish for RND/OVL if roundOption changes
+  useEffect(() => {
+    if (productType === 'RND' || productType === 'OVL') {
+        if (roundOption === 'FrameOnly') {
+            setFabricType(''); 
+            setFinish(''); 
+        } else if (roundOption === 'Stretched') {
+            setFabricType('12oz'); 
+            setFinish(''); 
+        }
+    }
+  }, [roundOption, productType]);
+
+  // Handle panelHasFabric change for PAN: auto-select 12oz fabric if checked
+  useEffect(() => {
+    if (productType === 'PAN') {
+        if (panelHasFabric) {
+            setFabricType('12oz'); // Automatically set to 12oz when 'Add Fabric' is checked
+            setFinish(''); // Reset finish, will be determined by 12oz fabric
+        } else {
+            // If panelHasFabric is unchecked, clear fabric type, and reset finish to default bare panel finishes
+            setFabricType(''); 
+            if (finish === 'NAT') { // If it was already NAT, it stays NAT.
+                setFinish('NAT');
+            } else { // Otherwise, reset to no finish for bare panel
+                setFinish('');
+            }
+        }
+    }
+  }, [panelHasFabric, productType]); // Added productType as dependency
+
+
+  // --- Dynamic Dropdown Options Getters ---
+
+  const getDepthOptions = useCallback(() => {
     switch (productType) {
       case 'CAN': 
       case 'PAN': 
@@ -575,62 +676,123 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         }));
       default: return [];
     }
-  };
+  }, [productType]);
 
-  const getFabricOptions = () => {
-    const fabrics = getMaterialsByType('Fabric');
-    return fabrics.map(f => ({ code: f.code, description: f.description })); 
-  };
+  const getFabricOptions = useCallback(() => {
+    if (productType === 'RND' || productType === 'OVL') {
+        if (roundOption === 'Stretched') {
+            const fabric12oz = getMaterialByCode('12oz');
+            if (fabric12oz) {
+                return [{ code: '12oz', description: fabric12oz.description }];
+            } else {
+                console.warn("--- WARNING --- '12oz' fabric material not found in Firestore for Round/Oval stretched option.");
+                return [];
+            }
+        } else { 
+            return [];
+        }
+    } else if (productType === 'PAN' && panelHasFabric) {
+        const fabrics = getMaterialsByType('Fabric');
+        return fabrics.map(f => ({ code: f.code, description: f.description })); 
+    } else if (productType === 'CAN') {
+        const fabrics = getMaterialsByType('Fabric');
+        return fabrics.map(f => ({ code: f.code, description: f.description })); 
+    }
+    return []; 
+  }, [productType, roundOption, panelHasFabric, getMaterialsByType, getMaterialByCode]);
 
-  const getFinishOptions = () => {
-    console.log("--- DEBUGGING LOG --- getFinishOptions called. Current fabricType:", fabricType);
-    const allFinishes = getMaterialsByType('Mediums/Coatings');
-    console.log("--- DEBUGGING LOG --- All 'Mediums/Coatings' from Firestore:", allFinishes);
+
+  const getFinishOptions = useCallback(() => {
+    console.log("--- DEBUGGING LOG (getFinishOptions) --- Called. Current fabricType:", fabricType, "Current productType:", productType, "Current roundOption:", roundOption, "Current panelHasFabric:", panelHasFabric);
+    const allFinishesFromFirestore = getMaterialsByType('Mediums/Coatings');
+    console.log("--- DEBUGGING LOG (getFinishOptions) --- All 'Mediums/Coatings' found in Firestore (raw objects):", allFinishesFromFirestore); 
+    console.log("--- DEBUGGING LOG (getFinishOptions) --- Codes from Firestore:", allFinishesFromFirestore.map(f => f.code));
 
     let allowedFinishes = [];
 
-    // Always add "Unprimed" option for relevant product types if not already present
-    if (['CAN', 'PAN', 'RND', 'OVL'].includes(productType)) {
-        if (!allowedFinishes.some(opt => opt.code === 'UNP')) {
-            allowedFinishes.push({ code: 'UNP', description: 'Unprimed' });
+    // Helper to get descriptive name for finishes
+    const getDescriptiveFinishName = (code) => {
+        switch (code) {
+            case 'UNP': return 'Unprimed';
+            case 'NAT': return 'Natural (Bare)';
+            case 'WPR': return 'Primed White';
+            case 'BPR': return 'Primed Black';
+            case 'CSL': return 'Clear Sealed';
+            default: return allFinishesFromFirestore.find(f => f.code === code)?.description || code; 
+        }
+    };
+
+    if (productType === 'CAN') {
+        if (fabricType === '12oz') { 
+            allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') }); 
+            const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
+            console.log("--- DEBUGGING LOG (getFinishOptions) --- Filtered for 12oz (WPR, BPR):", filteredPrimers);
+            allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
+        } else if (fabricType === 'LIN') {
+            allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') }); 
+            const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'CSL'].includes(f.code));
+            console.log("--- DEBUGGING LOG (getFinishOptions) --- Filtered for LIN (WPR, CSL):", filteredPrimers);
+            allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
+        } else if (fabricType === 'SUP' || fabricType === 'OIL') {
+            allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') }); 
         }
     }
-
-    // Refined Finish logic based on your new rules:
-    if (fabricType === '12OZ') {
-        allowedFinishes = allowedFinishes.concat(allFinishes.filter(f => ['WPR', 'BPR'].includes(f.code)).map(f => ({ code: f.code, description: f.description })));
-    } else if (fabricType === 'LIN') {
-        allowedFinishes = allowedFinishes.concat(allFinishes.filter(f => ['WPR', 'CSL'].includes(f.code)).map(f => ({ code: f.code, description: f.description })));
-    } 
-    // For 'SUP' (Superfine) and 'OIL', only 'NAT' is allowed besides 'UNP'
-    else if (fabricType === 'SUP' || fabricType === 'OIL') {
-        allowedFinishes = allowedFinishes.concat(allFinishes.filter(f => f.code === 'NAT').map(f => ({ code: f.code, description: f.description })));
+    else if (productType === 'PAN') {
+        if (panelHasFabric) { // If fabric is added to panel, finishes are for fabric
+            if (fabricType === '12oz') {
+                allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') });
+                const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
+                allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
+            } else if (fabricType === 'LIN') {
+                allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') });
+                const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'CSL'].includes(f.code));
+                allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
+            } else if (fabricType === 'SUP' || fabricType === 'OIL') {
+                 allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') }); 
+            }
+        } else { // Bare panel, finishes are for the panel surface
+            allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') });
+            const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
+            allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
+        }
     }
+    else if (productType === 'RND' || productType === 'OVL') {
+        if (roundOption === 'Stretched') {
+            allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') }); 
+            const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
+            allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
+        } else { 
+            return [];
+        }
+    }
+    else if (productType === 'TRA') {
+        allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') }); 
+        const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR', 'CSL'].includes(f.code));
+        allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
+    }
+    // STB does not have a finish option
 
-    console.log("--- DEBUGGING LOG --- Filtered allowedFinishes:", allowedFinishes);
-    return allowedFinishes; 
-  };
+    const uniqueFinishes = Array.from(new Map(allowedFinishes.map(item => [item.code, item])).values());
 
-  const getTrayFrameAddonOptions = () => {
-      // The user wants 'None', 'White', 'Black', 'Wood' as options
-      // We will map these simple strings to full material codes like T25W, T32B in calculation/SKU.
-      
-      // First, check if tray frames are compatible with current product type and depth
+    console.log("--- DEBUGGING LOG (getFinishOptions) --- Filtered and unique allowedFinishes (final):", uniqueFinishes);
+    return uniqueFinishes; 
+  }, [productType, fabricType, roundOption, panelHasFabric, getMaterialsByType]); 
+
+  const getTrayFrameAddonOptions = useCallback(() => {
       if (!((productType === 'CAN' || productType === 'PAN') && depth !== '44')) {
-          return []; // Not compatible, return no options
+          return []; 
       }
       
       const options = [];
-      // These options are always displayed if compatible.
-      // The calculation will check for actual material code presence in materialsData.
       options.push({ code: 'White', description: 'White' });
       options.push({ code: 'Black', description: 'Black' });
-      options.push({ code: 'Wood', description: 'Wood' });
+      options.push({ code: 'Wood', description: 'Wood' }); 
 
       return options; 
-  };
+  }, [productType, depth]);
 
 
+  // --- Save Quote Logic ---
   const handleSaveQuote = async () => {
     if (!db || !firestoreAppId || !userId) {
       setQuoteSaveMessage('Error: Firebase not initialized or user not authenticated.');
@@ -657,12 +819,14 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         minorAxis: parseFloat(minorAxis) || null,
         depth: depth || null,
         unit,
-        fabricType: fabricType || null,
+        fabricType: fabricType || null, 
         finish: finish || null,
         trayFrameAddon: trayFrameAddon || null, 
         bracingMode, 
         customHBraces: parseInt(customHBraces) || 0,
         customWBraces: parseInt(customWBraces) || 0,
+        roundOption: (productType === 'RND' || productType === 'OVL') ? roundOption : null,
+        panelHasFabric: productType === 'PAN' ? panelHasFabric : null,
         sku,
         quotePrice: parseFloat(quotePrice.replace('£', '')), 
         costBreakdown: { 
@@ -705,7 +869,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
       {loadingMaterials && <p className="text-lightGreen mb-4">Loading material options...</p>}
       {errorMaterials && <p className="text-red-400 mb-4">{errorMaterials}</p>}
 
-      <div className="bg-mediumGreen rounded-xl shadow-lg p-4 sm:p-8 w-full max-w-2xl"> {/* Increased max-w and adjusted padding */}
+      <div className="bg-mediumGreen rounded-xl shadow-lg p-4 sm:p-8 w-full max-w-2xl"> 
         <h2 className="text-2xl font-bold mb-6 text-center" style={{ color: colors.offWhite }}>
           Product Configuration
         </h2>
@@ -829,8 +993,48 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
               </div>
             )}
 
-            {/* Fabric Type Selection (Canvas, Panel, Round, Oval) */}
-            {(productType === 'CAN' || productType === 'PAN' || productType === 'RND' || productType === 'OVL') && (
+            {/* Round/Oval specific option: Frame Only or Stretched */}
+            {(productType === 'RND' || productType === 'OVL') && (
+                <div>
+                    <label htmlFor="roundOption" className="block text-offWhite text-sm font-semibold mb-2">
+                        Build Option
+                    </label>
+                    <select
+                        id="roundOption"
+                        value={roundOption}
+                        onChange={(e) => setRoundOption(e.target.value)}
+                        className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                    >
+                        <option value="Stretched" className="bg-deepGray text-offWhite">Stretched</option>
+                        <option value="FrameOnly" className="bg-deepGray text-offWhite">Frame Only</option>
+                    </select>
+                </div>
+            )}
+
+            {/* Panel specific option: Add Fabric */}
+            {productType === 'PAN' && finish === 'NAT' && ( 
+                <div className="md:col-span-2"> 
+                    <input
+                        type="checkbox"
+                        id="panelHasFabric"
+                        checked={panelHasFabric}
+                        onChange={(e) => setPanelHasFabric(e.target.checked)}
+                        className="mr-2 h-4 w-4 text-accentGold focus:ring-accentGold border-lightGreen rounded"
+                    />
+                    <label htmlFor="panelHasFabric" className="text-offWhite text-sm font-semibold">
+                        Add Fabric to Panel
+                    </label>
+                    {panelHasFabric && (
+                         <p className="text-lightGreen text-xs mt-1">Selecting fabric will add fabric cost and finish options for the fabric.</p>
+                    )}
+                </div>
+            )}
+
+            {/* Fabric Type Selection (Canvas, Stretched Round/Oval, Panel with Fabric) */}
+            {((productType === 'CAN') || 
+              ((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched') ||
+              (productType === 'PAN' && panelHasFabric)
+            ) && (
               <div>
                 <label htmlFor="fabricType" className="block text-offWhite text-sm font-semibold mb-2">
                   Fabric Type
@@ -838,17 +1042,25 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 <select
                   id="fabricType" value={fabricType} onChange={(e) => setFabricType(e.target.value)}
                   className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                  disabled={((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched')} 
                 >
                   <option value="">Select Fabric</option>
                   {getFabricOptions().map(opt => (
                     <option key={opt.code} value={opt.code} className="bg-deepGray text-offWhite">{opt.description}</option>
                   ))}
                 </select>
+                {((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched') && (
+                    <p className="text-lightGreen text-xs mt-1">Fabric fixed to 12oz for stretched {productType === 'RND' ? 'Round' : 'Oval'}.</p>
+                )}
               </div>
             )}
 
-            {/* Finish Selection (Canvas, Panel, Round, Oval) */}
-            {(productType === 'CAN' || productType === 'PAN' || productType === 'RND' || productType === 'OVL') && (
+            {/* Finish Selection (Canvas, Panel, Stretched Round/Oval, Tray Frame) */}
+            {((productType === 'CAN') || 
+              (productType === 'PAN') || 
+              ((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched') ||
+              (productType === 'TRA') 
+            ) && (
               <div>
                 <label htmlFor="finish" className="block text-offWhite text-sm font-semibold mb-2">
                   Finish
@@ -856,12 +1068,17 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 <select
                   id="finish" value={finish} onChange={(e) => setFinish(e.target.value)}
                   className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                  disabled={(productType === 'PAN' && panelHasFabric && !fabricType) || 
+                            ((productType === 'RND' || productType === 'OVL') && roundOption === 'FrameOnly')} 
                 >
                   <option value="">Select Finish</option>
                   {getFinishOptions().map(opt => (
                     <option key={opt.code} value={opt.code} className="bg-deepGray text-offWhite">{opt.description}</option>
                   ))}
                 </select>
+                {productType === 'PAN' && panelHasFabric && !fabricType && (
+                    <p className="text-red-300 text-xs mt-1">Select a fabric type first.</p>
+                )}
               </div>
             )}
 
@@ -874,7 +1091,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 <select
                   id="trayFrameAddon" value={trayFrameAddon} onChange={(e) => setTrayFrameAddon(e.target.value)}
                   className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
-                  disabled={depth === '44'} // Disable if depth is D44
+                  disabled={depth === '44'} 
                 >
                   <option value="">No Tray Frame</option>
                   {getTrayFrameAddonOptions().map(opt => (
@@ -898,12 +1115,12 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                     id="bracingMode" value={bracingMode} onChange={(e) => setBracingMode(e.target.value)}
                     className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
                   >
-                    <option value="None" className="bg-deepGray text-offWhite">No Braces</option>
                     <option value="Standard" className="bg-deepGray text-offWhite">Standard (Automatic)</option>
+                    <option value="None" className="bg-deepGray text-offWhite">No Braces</option>
                     <option value="Custom" className="bg-deepGray text-offWhite">Custom Braces</option>
                   </select>
                 </div>
-                {bracingMode === 'Custom' && (
+                {bracingMode === 'Custom' && ( 
                   <>
                     <div>
                       <label htmlFor="customHBraces" className="block text-offWhite text-sm font-semibold mb-2">
