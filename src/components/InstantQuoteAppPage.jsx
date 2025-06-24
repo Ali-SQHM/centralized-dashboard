@@ -6,6 +6,20 @@
 // Fix: Finish dropdown displays user-friendly descriptions.
 // Fix: Corrected brace material lookup to 'CB' code.
 // Fix: When "Add Fabric to Panel" is checked, default fabricType to '12oz' to prevent finish dropdown "jumping".
+// Fix: Adjusted panelHasFabric useEffect dependencies to resolve panel jumping/SKU not configuring issues.
+// Fix: Ensured 'CAN' product defaults to '12oz' fabric on product type change to enable cost calculation from start.
+// FIX: Corrected syntax error in useState declaration for loadingMaterials.
+// NEW: Fabric dropdown order customized to 12oz, Superfine, Linen, Oil primed.
+// NEW: Dropdown styling updated (white background, dark text, light green highlight).
+// NEW: Input field styling updated (white background, dark text).
+// NEW: Wedges calculation implemented for CAN, STB, PAN (8 per frame + 2 per cross brace).
+// NEW: Keys calculation implemented for TRA (8 per frame).
+// NEW: Markup logic completely revised based on Sales Price % rules for each product type and CAN area bands.
+// NEW: VAT (20%) applied as the final step.
+// NEW: Added Panel Material (PLY6) cost for bare PAN products.
+// NEW: Added Round/Oval Material (MDF6) cost for FrameOnly RND/OVL products.
+// NEW: Finish dropdown hidden for Superfine and Oil primed fabrics.
+// NEW: Enhanced console logs for material lookups in calculatePreliminaryPrice.
 // REFINEMENTS:
 // - Precise Finish options logic based on Fabric Type and Product Type.
 // - Enhanced robustness for material data access and calculations.
@@ -44,7 +58,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
   const [sku, setSku] = useState('');
   const [quotePrice, setQuotePrice] = useState(null);
   const [materialsData, setMaterialsData] = useState([]);
-  const [loadingMaterials, setLoadingMaterials] = useState(true);
+  const [loadingMaterials, setLoadingMaterials] = useState(true); // FIXED: Added useState()
   const [errorMaterials, setErrorMaterials] = useState(null);
   const [quoteSaveMessage, setQuoteSaveMessage] = useState('');
 
@@ -55,10 +69,15 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
     profileCost: 0, 
     trayFrameCost: 0,
     braceCost: 0,
+    wedgeCost: 0, 
+    keyCost: 0,   
     packagingCost: 0, 
+    panelMaterialCost: 0, // NEW
+    roundMaterialCost: 0, // NEW
     subtotal: 0,
     markupAmount: 0,
-    finalPriceNet: 0, 
+    finalPriceBeforeVAT: 0, 
+    finalPriceWithVAT: 0,   
   });
 
 
@@ -121,16 +140,22 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
   // --- Memoized Material Getters ---
   const getMaterialsByType = useCallback((type) => {
     if (!materialsData || materialsData.length === 0) {
+        console.log(`--- DEBUGGING LOG (getMaterialsByType) --- No materialsData or empty for type: ${type}`);
         return [];
     }
-    return materialsData.filter(m => m.materialType === type);
+    const filtered = materialsData.filter(m => m.materialType === type);
+    console.log(`--- DEBUGGING LOG (getMaterialsByType) --- Found ${filtered.length} materials for type: ${type}`);
+    return filtered;
   }, [materialsData]);
 
   const getMaterialByCode = useCallback((code) => {
     if (!materialsData || materialsData.length === 0 || !code) {
+        console.log(`--- DEBUGGING LOG (getMaterialByCode) --- No materialsData or empty, or no code provided for code: ${code}`);
         return null;
     }
-    return materialsData.find(m => m.code === code);
+    const found = materialsData.find(m => m.code === code);
+    console.log(`--- DEBUGGING LOG (getMaterialByCode) --- Material for code ${code} found:`, found ? 'Yes' : 'No', found);
+    return found;
   }, [materialsData]);
 
 
@@ -144,17 +169,22 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             profileCost: 0, 
             trayFrameCost: 0,
             braceCost: 0,
+            wedgeCost: 0, 
+            keyCost: 0,   
             packagingCost: 0, 
+            panelMaterialCost: 0, 
+            roundMaterialCost: 0, 
             subtotal: 0,
             markupAmount: 0,
-            finalPriceNet: 0, 
+            finalPriceBeforeVAT: 0, 
+            finalPriceWithVAT: 0,   
         };
 
         let cumulativeCost = 0;
 
-        const MARKUP_PERCENTAGE = 0.20; 
         const MINIMUM_QUOTE_PRICE = 25.00; 
         const BRACE_STANDARD_INTERVAL_CM = 90; 
+        const VAT_MULTIPLIER = 1.20; // 120% including VAT
 
         const convertToCm = (val) => (unit === 'IN' ? parseNum(val) * 2.54 : parseNum(val));
         const currentHeight = convertToCm(height);
@@ -209,65 +239,94 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         cumulativeCost += breakdown.deliveryCost;
         
         // 2. Fabric Cost & Finish Cost (conditional based on product type and options)
+        let selectedFabric = null;
         if (productType === 'CAN' || productType === 'RND' || productType === 'OVL') {
             if (productType === 'RND' || productType === 'OVL') {
-                if (roundOption === 'Stretched') { // Only 12oz for stretched rounds/ovals
-                    const selectedFabric = getMaterialByCode('12oz'); // Fabric is fixed to 12oz
-                    if (selectedFabric && productAreaCm2 > 0) {
-                        breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
-                        cumulativeCost += breakdown.fabricCost;
-                    }
-                } else { // FrameOnly option, no fabric cost
-                    breakdown.fabricCost = 0;
+                if (roundOption === 'Stretched') { 
+                    selectedFabric = getMaterialByCode('12oz'); 
                 }
             } else { // Standard Canvas (CAN)
-                const selectedFabric = getMaterialByCode(fabricType);
-                if (selectedFabric && productAreaCm2 > 0) {
-                    breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
-                    cumulativeCost += breakdown.fabricCost;
-                }
+                selectedFabric = getMaterialByCode(fabricType);
             }
 
+            if (selectedFabric && productAreaCm2 > 0) {
+                breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
+                cumulativeCost += breakdown.fabricCost;
+            }
+            console.log(`--- DEBUGGING LOG (Fabric Cost) --- ProductType: ${productType}, FabricType: ${fabricType}, Selected Fabric:`, selectedFabric, `Cost: ${breakdown.fabricCost.toFixed(2)}`);
+
+
             // Finish cost for CAN, RND (Stretched), OVL (Stretched)
-            if (finish === 'UNP' || finish === 'NAT') { 
+            let selectedFinish = null;
+            if (finish === 'UNP' || finish === 'NAT' || fabricType === 'SUP' || fabricType === 'OIL') { // Added condition for SUP/OIL
                 breakdown.finishCost = 0;
             } else {
-                const selectedFinish = getMaterialByCode(finish);
+                selectedFinish = getMaterialByCode(finish);
                 if (selectedFinish && productAreaCm2 > 0) {
                     breakdown.finishCost = (selectedFinish.mcp || 0) * productAreaCm2;
                     cumulativeCost += breakdown.finishCost;
                 }
             }
+            console.log(`--- DEBUGGING LOG (Finish Cost) --- ProductType: ${productType}, Finish: ${finish}, Selected Finish:`, selectedFinish, `Cost: ${breakdown.finishCost.toFixed(2)}`);
+
         } else if (productType === 'PAN') {
             // Panel has its own surface finish OR a stretched fabric
             if (panelHasFabric) {
-                const selectedFabric = getMaterialByCode(fabricType); // Fabric for the panel
+                selectedFabric = getMaterialByCode(fabricType); 
                 if (selectedFabric && productAreaCm2 > 0) {
                     breakdown.fabricCost = (selectedFabric.mcp || 0) * productAreaCm2;
                     cumulativeCost += breakdown.fabricCost;
                 }
+                console.log(`--- DEBUGGING LOG (Fabric Cost) --- ProductType: ${productType}, PanelHasFabric: true, FabricType: ${fabricType}, Selected Fabric:`, selectedFabric, `Cost: ${breakdown.fabricCost.toFixed(2)}`);
+
                 // Finish cost for fabric on panel
-                if (finish === 'UNP' || finish === 'NAT') { // NAT here for fabric on panel
+                let selectedFinish = null;
+                if (finish === 'UNP' || finish === 'NAT' || fabricType === 'SUP' || fabricType === 'OIL') { // Added condition for SUP/OIL
                     breakdown.finishCost = 0;
                 } else {
-                    const selectedFinish = getMaterialByCode(finish);
+                    selectedFinish = getMaterialByCode(finish);
                     if (selectedFinish && productAreaCm2 > 0) {
                         breakdown.finishCost = (selectedFinish.mcp || 0) * productAreaCm2;
                         cumulativeCost += breakdown.finishCost;
                     }
                 }
+                console.log(`--- DEBUGGING LOG (Finish Cost) --- ProductType: ${productType}, PanelHasFabric: true, Finish: ${finish}, Selected Finish:`, selectedFinish, `Cost: ${breakdown.finishCost.toFixed(2)}`);
+
             } else { // Bare Panel, finish applies to the panel itself
-                if (finish === 'UNP' || finish === 'NAT') { // Panel is Natural/Unfinished
+                let selectedFinish = null;
+                if (finish === 'UNP' || finish === 'NAT') { 
                     breakdown.finishCost = 0;
                 } else {
-                    const selectedFinish = getMaterialByCode(finish); // Primed White/Black for panel
+                    selectedFinish = getMaterialByCode(finish); 
                     if (selectedFinish && productAreaCm2 > 0) {
                         breakdown.finishCost = (selectedFinish.mcp || 0) * productAreaCm2;
                         cumulativeCost += breakdown.finishCost;
                     }
                 }
+                console.log(`--- DEBUGGING LOG (Finish Cost) --- ProductType: ${productType}, PanelHasFabric: false, Finish: ${finish}, Selected Finish:`, selectedFinish, `Cost: ${breakdown.finishCost.toFixed(2)}`);
             }
         }
+
+        // NEW: Panel Material Cost for PAN if no fabric
+        if (productType === 'PAN' && !panelHasFabric) {
+            const ply6Material = getMaterialByCode('PLY6');
+            if (ply6Material && productAreaCm2 > 0) {
+                breakdown.panelMaterialCost = (ply6Material.mcp || 0) * productAreaCm2;
+                cumulativeCost += breakdown.panelMaterialCost;
+            }
+            console.log(`--- DEBUGGING LOG (Panel Material Cost) --- ProductType: PAN, PanelHasFabric: false, PLY6 Material:`, ply6Material, `Cost: ${breakdown.panelMaterialCost.toFixed(2)}`);
+        }
+
+        // NEW: Round/Oval Material Cost for RND/OVL if 'Frame Only'
+        if ((productType === 'RND' || productType === 'OVL') && roundOption === 'FrameOnly') {
+            const mdf6Material = getMaterialByCode('MDF6');
+            if (mdf6Material && productAreaCm2 > 0) {
+                breakdown.roundMaterialCost = (mdf6Material.mcp || 0) * productAreaCm2;
+                cumulativeCost += breakdown.roundMaterialCost;
+            }
+            console.log(`--- DEBUGGING LOG (Round Material Cost) --- ProductType: ${productType}, RoundOption: FrameOnly, MDF6 Material:`, mdf6Material, `Cost: ${breakdown.roundMaterialCost.toFixed(2)}`);
+        }
+
 
         // 3. Stretcher Bar/Profile Cost (applies to CAN, PAN, RND, OVL, STB)
         const profileMaterialCode = depth ? `P${depth}` : ''; 
@@ -277,6 +336,8 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             breakdown.profileCost = (selectedDepthProfile.mcp || 0) * productPerimeterCm;
             cumulativeCost += breakdown.profileCost;
         }
+        console.log(`--- DEBUGGING LOG (Profile Cost) --- Depth: ${depth}, Selected Profile:`, selectedDepthProfile, `Cost: ${breakdown.profileCost.toFixed(2)}`);
+
 
         // 4. Tray Frame Add-on Cost (for CAN, PAN if depth is not D44)
         let actualTrayFrameCode = '';
@@ -295,9 +356,11 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             breakdown.trayFrameCost = (selectedTrayFrame.mcp || 0) * productPerimeterCm; 
             cumulativeCost += breakdown.trayFrameCost;
         }
+        console.log(`--- DEBUGGING LOG (Tray Frame Cost) --- TrayFrameAddon: ${trayFrameAddon}, Selected Tray Frame:`, selectedTrayFrame, `Cost: ${breakdown.trayFrameCost.toFixed(2)}`);
 
-        // 5. Braces Cost (for CAN, STB) - Corrected lookup for 'CB'
-        const braceMaterial = getMaterialByCode('CB'); // Direct lookup by code 'CB'
+
+        // 5. Braces Cost (for CAN, STB, PAN with fabric)
+        const braceMaterial = getMaterialByCode('CB'); 
         console.log("--- DEBUGGING LOG (Calculate Braces) --- braceMaterial found:", braceMaterial);
         console.log("--- DEBUGGING LOG (Calculate Braces) --- braceMaterial.mcp:", braceMaterial?.mcp);
         
@@ -325,7 +388,10 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         const totalCalculatedBracesCount = currentHBraces + currentWBraces;
         console.log("--- DEBUGGING LOG (Calculate Braces) --- totalCalculatedBracesCount:", totalCalculatedBracesCount);
 
-        if (braceMaterial && totalCalculatedBracesCount > 0 && totalCalculatedBracesCount <= 6) { 
+        // Braces apply to CAN, STB, and PAN if it has fabric (as it implies a stretcher frame)
+        const appliesBraces = (productType === 'CAN' || productType === 'STB' || (productType === 'PAN' && panelHasFabric));
+
+        if (appliesBraces && braceMaterial && totalCalculatedBracesCount > 0 && totalCalculatedBracesCount <= 6) { 
             const totalBraceLengthCm = 
                 (currentHBraces * currentWidth) + 
                 (currentWBraces * currentHeight);
@@ -335,10 +401,60 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             console.log("--- DEBUGGING LOG (Calculate Braces) --- Calculated breakdown.braceCost:", breakdown.braceCost);
             cumulativeCost += breakdown.braceCost;
         } else {
-            console.log("--- DEBUGGING LOG (Calculate Braces) --- Brace cost not calculated: Conditions not met. braceMaterial:", braceMaterial, "totalCalculatedBracesCount:", totalCalculatedBracesCount);
+            console.log("--- DEBUGGING LOG (Calculate Braces) --- Brace cost not calculated: Conditions not met or not applicable. braceMaterial:", braceMaterial, "totalCalculatedBracesCount:", totalCalculatedBracesCount, "appliesBraces:", appliesBraces);
+        }
+
+        // 6. Wedges Cost (WDG) - Applies to CAN, STB, Panels (if they have a frame implicitly)
+        const wedgeMaterial = getMaterialByCode('WDG');
+        console.log("--- DEBUGGING LOG (Calculate Wedges) --- wedgeMaterial found:", wedgeMaterial);
+        console.log("--- DEBUGGING LOG (Calculate Wedges) --- wedgeMaterial.mcp:", wedgeMaterial?.mcp);
+        
+        let totalWedges = 0;
+        const appliesWedges = ['CAN', 'STB', 'PAN'].includes(productType);
+
+        if (appliesWedges) {
+            totalWedges += 8; // 8 wedges for the main frame
         }
         
-        // 6. Packaging Cost (dynamic based on product type and specific codes BUB, CAR)
+        // Add 2 wedges per cross brace, only if braces apply to this product type
+        if (appliesWedges && totalCalculatedBracesCount > 0) {
+            totalWedges += (totalCalculatedBracesCount * 2); 
+        }
+
+        console.log("--- DEBUGGING LOG (Calculate Wedges) --- totalWedges:", totalWedges);
+
+        if (wedgeMaterial && totalWedges > 0) {
+            breakdown.wedgeCost = (wedgeMaterial.mcp || 0) * totalWedges;
+            console.log("--- DEBUGGING LOG (Calculate Wedges) --- Calculated breakdown.wedgeCost:", breakdown.wedgeCost);
+            cumulativeCost += breakdown.wedgeCost;
+        } else {
+            console.log("--- DEBUGGING LOG (Calculate Wedges) --- Wedge cost not calculated: Conditions not met or not applicable. wedgeMaterial:", wedgeMaterial, "totalWedges:", totalWedges, "appliesWedges:", appliesWedges);
+        }
+
+        // 7. Keys Cost (KEY) - Applies ONLY to Tray Frames (TRA)
+        const keyMaterial = getMaterialByCode('KEY');
+        console.log("--- DEBUGGING LOG (Calculate Keys) --- keyMaterial found:", keyMaterial);
+        console.log("--- DEBUGGING LOG (Calculate Keys) --- keyMaterial.mcp:", keyMaterial?.mcp);
+
+        let totalKeys = 0;
+        const appliesKeys = (productType === 'TRA');
+
+        if (appliesKeys) {
+            totalKeys += 8; // 8 keys for the tray frame itself
+        }
+        // No keys for cross braces in tray frames as per instructions
+
+        console.log("--- DEBUGGING LOG (Calculate Keys) --- totalKeys:", totalKeys);
+
+        if (keyMaterial && totalKeys > 0) {
+            breakdown.keyCost = (keyMaterial.mcp || 0) * totalKeys;
+            console.log("--- DEBUGGING LOG (Calculate Keys) --- Calculated breakdown.keyCost:", breakdown.keyCost);
+            cumulativeCost += breakdown.keyCost;
+        } else {
+            console.log("--- DEBUGGING LOG (Calculate Keys) --- Key cost not calculated: Conditions not met or not applicable. keyMaterial:", keyMaterial, "totalKeys:", totalKeys, "appliesKeys:", appliesKeys);
+        }
+        
+        // 8. Packaging Cost (dynamic based on product type and specific codes BUB, CAR)
         const bubbleWrapMaterial = getMaterialByCode('BUB'); 
         const cardboardMaterial = getMaterialByCode('CAR');     
 
@@ -353,26 +469,61 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         } else {
             breakdown.packagingCost = 0; 
         }
+        console.log(`--- DEBUGGING LOG (Packaging Cost) --- ProductType: ${productType}, Cost: ${breakdown.packagingCost.toFixed(2)}`);
         cumulativeCost += breakdown.packagingCost;
 
 
-        breakdown.subtotal = cumulativeCost;
+        // Calculate Markup based on new rules
+        breakdown.subtotal = cumulativeCost; // This is the total component cost before markup
 
-        breakdown.markupAmount = cumulativeCost * MARKUP_PERCENTAGE;
-        breakdown.finalPriceNet = cumulativeCost * (1 + MARKUP_PERCENTAGE);
+        let effectiveSalesPriceMultiplier = 0; 
 
-        let finalPriceWithFloor = Math.max(breakdown.finalPriceNet, MINIMUM_QUOTE_PRICE);
+        if (productType === 'CAN') {
+            if (productAreaCm2 < 2025) {
+                effectiveSalesPriceMultiplier = 1.10; 
+            } else if (productAreaCm2 < 8100) {
+                effectiveSalesPriceMultiplier = 1.50; 
+            } else if (productAreaCm2 < 32000) {
+                effectiveSalesPriceMultiplier = 1.60; 
+            } else { // >= 32000 cm2
+                effectiveSalesPriceMultiplier = 1.70; 
+            }
+        } else if (productType === 'PAN') {
+            effectiveSalesPriceMultiplier = 1.33; 
+        } else if (productType === 'RND' || productType === 'OVL') {
+            effectiveSalesPriceMultiplier = 1.50; 
+        } else if (productType === 'STB') {
+            effectiveSalesPriceMultiplier = 1.43; 
+        } else if (productType === 'TRA') {
+            effectiveSalesPriceMultiplier = 1.10; 
+        }
+        console.log(`--- DEBUGGING LOG (Markup) --- Subtotal: ${breakdown.subtotal.toFixed(2)}, Product Type: ${productType}, Area: ${productAreaCm2.toFixed(2)}, Multiplier: ${effectiveSalesPriceMultiplier}`);
+
+
+        let priceBeforeVAT = Math.max(breakdown.subtotal * effectiveSalesPriceMultiplier, MINIMUM_QUOTE_PRICE);
+
+        breakdown.markupAmount = priceBeforeVAT - breakdown.subtotal;
+
+        let finalPriceWithVAT = priceBeforeVAT * VAT_MULTIPLIER;
+
+        breakdown.finalPriceBeforeVAT = priceBeforeVAT; 
+        breakdown.finalPriceWithVAT = finalPriceWithVAT; 
+
+        console.log(`--- DEBUGGING LOG (Final Price) --- Price before VAT: ${priceBeforeVAT.toFixed(2)}, Final Price with VAT: ${finalPriceWithVAT.toFixed(2)}`);
+
 
         setCostBreakdown(breakdown);
 
-        return finalPriceWithFloor;
+        return finalPriceWithVAT;
     } catch (error) {
         console.error("--- CRITICAL ERROR IN calculatePreliminaryPrice ---", error);
         setQuotePrice('ERROR'); 
         setCostBreakdown({ 
             deliveryCost: 0, fabricCost: 0, finishCost: 0, profileCost: 0, 
-            trayFrameCost: 0, braceCost: 0, packagingCost: 0, subtotal: 0,
-            markupAmount: 0, finalPriceNet: 0, 
+            trayFrameCost: 0, braceCost: 0, wedgeCost: 0, keyCost: 0, packagingCost: 0, 
+            panelMaterialCost: 0, roundMaterialCost: 0, // Reset new costs too
+            subtotal: 0,
+            markupAmount: 0, finalPriceBeforeVAT: 0, finalPriceWithVAT: 0,
         });
         return null;
     }
@@ -403,7 +554,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         let validFinish = false;
         
         // Common logic for fabricAbbr
-        if (fabricType) { // only if a fabric is selected/determined
+        if (fabricType) { 
             const fabricObj = getMaterialByCode(fabricType);
             fabricAbbr = fabricObj?.code || '';
         }
@@ -458,8 +609,8 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
           case 'CAN': 
             validDimensions = (parseNum(height) > 0 && parseNum(width) > 0);
             validFabric = fabricAbbr !== '';
-            validFinish = finishAbbr !== '';
-
+            validFinish = (fabricType === 'SUP' || fabricType === 'OIL') ? true : (finishAbbr !== ''); // No finish needed for SUP/OIL
+            
             if (validDimensions && validDepth && validFabric && validFinish) {
                 generatedSku = `CAN-${parseNum(height).toFixed(1)}-${parseNum(width).toFixed(1)}-${selectedDepthAbbr}-${unit}-${fabricAbbr}-${finishAbbr}${trayFramePart}${customBracingPart}`;
                 currentPrice = calculatePreliminaryPrice();
@@ -471,12 +622,12 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
 
           case 'PAN': 
             validDimensions = (parseNum(height) > 0 && parseNum(width) > 0);
-            validFinish = finishAbbr !== '';
-
+            validFinish = (panelHasFabric && (fabricType === 'SUP' || fabricType === 'OIL')) ? true : (finishAbbr !== ''); // No finish needed for SUP/OIL on panel, otherwise needs finish
+            
             if (panelHasFabric) {
                 validFabric = fabricAbbr !== '';
             } else {
-                validFabric = true; 
+                validFabric = true; // No fabric selected means valid if it's a bare panel.
             }
 
             if (validDimensions && validDepth && validFinish && validFabric) {
@@ -525,7 +676,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 validFinish = true;
             }
 
-            if (validDimensions && validDepth && validFabric && validFinish) {
+            if (validDimensions && validDepth && validFabric && validFinish) { 
                 const fabricFinishPart = (roundOption === 'Stretched' && finishAbbr) ? `-${fabricAbbr}-${finishAbbr}` : (roundOption === 'FrameOnly' ? '' : `-NOFAB-${finishAbbr}`);
                 generatedSku = `OVL-${parseNum(majorAxis).toFixed(1)}-${parseNum(minorAxis).toFixed(1)}-${selectedDepthAbbr}-${unit}${fabricFinishPart}`;
                 currentPrice = calculatePreliminaryPrice();
@@ -590,7 +741,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
     setMinorAxis('');
     setDepth('');
     setUnit('CM');
-    setFabricType('');
+    setFabricType(''); 
     setFinish(''); 
     setTrayFrameAddon(''); 
     setBracingMode('Standard'); 
@@ -608,11 +759,22 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         profileCost: 0,
         trayFrameCost: 0,
         braceCost: 0,
+        wedgeCost: 0, 
+        keyCost: 0,   
         packagingCost: 0,
+        panelMaterialCost: 0, 
+        roundMaterialCost: 0,
         subtotal: 0,
         markupAmount: 0,
-        finalPriceNet: 0,
+        finalPriceBeforeVAT: 0, 
+        finalPriceWithVAT: 0,
     });
+
+    // Default fabric for CAN on product type change
+    if (productType === 'CAN') {
+      setFabricType('12oz'); 
+    }
+
   }, [productType]);
 
   // Reset finish when fabric type changes
@@ -642,20 +804,18 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
   useEffect(() => {
     if (productType === 'PAN') {
         if (panelHasFabric) {
-            setFabricType('12oz'); // Automatically set to 12oz when 'Add Fabric' is checked
-            setFinish(''); // Reset finish, will be determined by 12oz fabric
+            setFabricType('12oz'); 
+            setFinish(''); 
         } else {
-            // If panelHasFabric is unchecked, clear fabric type, and reset finish to default bare panel finishes
             setFabricType(''); 
-            if (finish === 'NAT') { // If it was already NAT, it stays NAT.
+            if (finish === 'NAT') { 
                 setFinish('NAT');
-            } else { // Otherwise, reset to no finish for bare panel
-                setFinish('');
+            } else {
+                setFinish(''); 
             }
         }
     }
-  }, [panelHasFabric, productType]); // Added productType as dependency
-
+  }, [panelHasFabric, productType]); 
 
   // --- Dynamic Dropdown Options Getters ---
 
@@ -679,9 +839,31 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
   }, [productType]);
 
   const getFabricOptions = useCallback(() => {
+    const allFabrics = getMaterialsByType('Fabric');
+    
+    // Define a custom sort order for specific fabric codes
+    const customOrder = ['12oz', 'SUP', 'LIN', 'OIL']; 
+    
+    // Sort the fabrics
+    let sortedFabrics = [...allFabrics].sort((a, b) => { 
+        const indexA = customOrder.indexOf(a.code);
+        const indexB = customOrder.indexOf(b.code);
+
+        if (indexA === -1 && indexB === -1) {
+            return a.description.localeCompare(b.description); 
+        }
+        if (indexA === -1) {
+            return 1; 
+        }
+        if (indexB === -1) {
+            return -1; 
+        }
+        return indexA - indexB; 
+    });
+
     if (productType === 'RND' || productType === 'OVL') {
         if (roundOption === 'Stretched') {
-            const fabric12oz = getMaterialByCode('12oz');
+            const fabric12oz = sortedFabrics.find(f => f.code === '12oz');
             if (fabric12oz) {
                 return [{ code: '12oz', description: fabric12oz.description }];
             } else {
@@ -692,11 +874,9 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             return [];
         }
     } else if (productType === 'PAN' && panelHasFabric) {
-        const fabrics = getMaterialsByType('Fabric');
-        return fabrics.map(f => ({ code: f.code, description: f.description })); 
+        return sortedFabrics.map(f => ({ code: f.code, description: f.description })); 
     } else if (productType === 'CAN') {
-        const fabrics = getMaterialsByType('Fabric');
-        return fabrics.map(f => ({ code: f.code, description: f.description })); 
+        return sortedFabrics.map(f => ({ code: f.code, description: f.description })); 
     }
     return []; 
   }, [productType, roundOption, panelHasFabric, getMaterialsByType, getMaterialByCode]);
@@ -722,7 +902,13 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         }
     };
 
-    if (productType === 'CAN') {
+    if (productType === 'CAN' || (productType === 'PAN' && panelHasFabric)) {
+        // If Superfine or Oil primed is selected, no finish options
+        if (fabricType === 'SUP' || fabricType === 'OIL') {
+            console.log("--- DEBUGGING LOG (getFinishOptions) --- Superfine or Oil primed selected, no finish options.");
+            return []; 
+        }
+
         if (fabricType === '12oz') { 
             allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') }); 
             const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
@@ -733,28 +919,12 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'CSL'].includes(f.code));
             console.log("--- DEBUGGING LOG (getFinishOptions) --- Filtered for LIN (WPR, CSL):", filteredPrimers);
             allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
-        } else if (fabricType === 'SUP' || fabricType === 'OIL') {
-            allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') }); 
         }
     }
-    else if (productType === 'PAN') {
-        if (panelHasFabric) { // If fabric is added to panel, finishes are for fabric
-            if (fabricType === '12oz') {
-                allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') });
-                const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
-                allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
-            } else if (fabricType === 'LIN') {
-                allowedFinishes.push({ code: 'UNP', description: getDescriptiveFinishName('UNP') });
-                const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'CSL'].includes(f.code));
-                allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
-            } else if (fabricType === 'SUP' || fabricType === 'OIL') {
-                 allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') }); 
-            }
-        } else { // Bare panel, finishes are for the panel surface
-            allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') });
-            const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
-            allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
-        }
+    else if (productType === 'PAN' && !panelHasFabric) { // Bare panel finishes
+        allowedFinishes.push({ code: 'NAT', description: getDescriptiveFinishName('NAT') });
+        const filteredPrimers = allFinishesFromFirestore.filter(f => ['WPR', 'BPR'].includes(f.code));
+        allowedFinishes = allowedFinishes.concat(filteredPrimers.map(f => ({ code: f.code, description: getDescriptiveFinishName(f.code) })));
     }
     else if (productType === 'RND' || productType === 'OVL') {
         if (roundOption === 'Stretched') {
@@ -836,10 +1006,15 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             profileCost: costBreakdown.profileCost,
             trayFrameCost: costBreakdown.trayFrameCost,
             braceCost: costBreakdown.braceCost,
+            wedgeCost: costBreakdown.wedgeCost, 
+            keyCost: costBreakdown.keyCost,   
             packagingCost: costBreakdown.packagingCost, 
+            panelMaterialCost: costBreakdown.panelMaterialCost, 
+            roundMaterialCost: costBreakdown.roundMaterialCost,
             subtotal: costBreakdown.subtotal,
             markupAmount: costBreakdown.markupAmount,
-            finalPriceNet: costBreakdown.finalPriceNet,
+            finalPriceBeforeVAT: costBreakdown.finalPriceBeforeVAT, 
+            finalPriceWithVAT: costBreakdown.finalPriceWithVAT,
         },
         generatedByUserId: userId, 
         timestamp: new Date().toISOString(), 
@@ -884,14 +1059,14 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
               id="productType"
               value={productType}
               onChange={(e) => setProductType(e.target.value)}
-              className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+              className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
             >
-              <option value="CAN" className="bg-deepGray text-offWhite">Canvas (CAN)</option>
-              <option value="PAN" className="bg-deepGray text-offWhite">Painting Panel (PAN)</option>
-              <option value="RND" className="bg-deepGray text-offWhite">Round (RND)</option>
-              <option value="OVL" className="bg-deepGray text-offWhite">Oval (OVL)</option>
-              <option value="TRA" className="bg-deepGray text-offWhite">Tray Frame (TRA)</option>
-              <option value="STB" className="bg-deepGray text-offWhite">Stretcher Bar Frame (STB)</option>
+              <option value="CAN" className="bg-white text-deepGray">Canvas (CAN)</option>
+              <option value="PAN" className="bg-white text-deepGray">Painting Panel (PAN)</option>
+              <option value="RND" className="bg-white text-deepGray">Round (RND)</option>
+              <option value="OVL" className="bg-white text-deepGray">Oval (OVL)</option>
+              <option value="TRA" className="bg-white text-deepGray">Tray Frame (TRA)</option>
+              <option value="STB" className="bg-white text-deepGray">Stretcher Bar Frame (STB)</option>
             </select>
           </div>
 
@@ -904,10 +1079,10 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
               id="unit"
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+              className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
             >
-              <option value="CM" className="bg-deepGray text-offWhite">CM</option>
-              <option value="IN" className="bg-deepGray text-offWhite">IN</option>
+              <option value="CM" className="bg-white text-deepGray">CM</option>
+              <option value="IN" className="bg-white text-deepGray">IN</option>
             </select>
           </div>
 
@@ -920,7 +1095,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <input
                   type="number" step="0.1" id="height" value={height} onChange={(e) => setHeight(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen placeholder-offWhite/70"
+                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                   placeholder="e.g., 80.0"
                 />
               </div>
@@ -930,7 +1105,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <input
                   type="number" step="0.1" id="width" value={width} onChange={(e) => setWidth(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen placeholder-offWhite/70"
+                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                   placeholder="e.g., 60.0"
                 />
               </div>
@@ -944,7 +1119,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <input
                   type="number" step="0.1" id="diameter" value={diameter} onChange={(e) => setDiameter(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen placeholder-offWhite/70"
+                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                   placeholder="e.g., 120.0"
                 />
               </div>
@@ -958,7 +1133,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                   </label>
                   <input
                     type="number" step="0.1" id="majorAxis" value={majorAxis} onChange={(e) => setMajorAxis(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen placeholder-offWhite/70"
+                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                     placeholder="e.g., 100.0"
                   />
                 </div>
@@ -968,7 +1143,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                   </label>
                   <input
                     type="number" step="0.1" id="minorAxis" value={minorAxis} onChange={(e) => setMinorAxis(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen placeholder-offWhite/70"
+                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                     placeholder="e.g., 70.0"
                   />
                 </div>
@@ -983,11 +1158,11 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="depth" value={depth} onChange={(e) => setDepth(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                 >
                   <option value="">Select Depth</option>
                   {getDepthOptions().map(opt => (
-                    <option key={opt.code} value={opt.code} className="bg-deepGray text-offWhite">{opt.description}</option> 
+                    <option key={opt.code} value={opt.code} className="bg-white text-deepGray">{opt.description}</option> 
                   ))}
                 </select>
               </div>
@@ -1003,10 +1178,10 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                         id="roundOption"
                         value={roundOption}
                         onChange={(e) => setRoundOption(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                     >
-                        <option value="Stretched" className="bg-deepGray text-offWhite">Stretched</option>
-                        <option value="FrameOnly" className="bg-deepGray text-offWhite">Frame Only</option>
+                        <option value="Stretched" className="bg-white text-deepGray">Stretched</option>
+                        <option value="FrameOnly" className="bg-white text-deepGray">Frame Only</option>
                     </select>
                 </div>
             )}
@@ -1041,12 +1216,12 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="fabricType" value={fabricType} onChange={(e) => setFabricType(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                   disabled={((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched')} 
                 >
                   <option value="">Select Fabric</option>
                   {getFabricOptions().map(opt => (
-                    <option key={opt.code} value={opt.code} className="bg-deepGray text-offWhite">{opt.description}</option>
+                    <option key={opt.code} value={opt.code} className="bg-white text-deepGray">{opt.description}</option>
                   ))}
                 </select>
                 {((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched') && (
@@ -1056,10 +1231,11 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             )}
 
             {/* Finish Selection (Canvas, Panel, Stretched Round/Oval, Tray Frame) */}
-            {((productType === 'CAN') || 
-              (productType === 'PAN') || 
-              ((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched') ||
-              (productType === 'TRA') 
+            {((productType === 'CAN' && (fabricType !== 'SUP' && fabricType !== 'OIL')) || // CAN with specific fabrics
+              (productType === 'PAN' && !panelHasFabric) || // Bare PAN
+              (productType === 'PAN' && panelHasFabric && (fabricType !== 'SUP' && fabricType !== 'OIL')) || // PAN with fabric, if not SUP/OIL
+              ((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched') || // Stretched RND/OVL
+              (productType === 'TRA') // TRA
             ) && (
               <div>
                 <label htmlFor="finish" className="block text-offWhite text-sm font-semibold mb-2">
@@ -1067,13 +1243,13 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="finish" value={finish} onChange={(e) => setFinish(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                   disabled={(productType === 'PAN' && panelHasFabric && !fabricType) || 
                             ((productType === 'RND' || productType === 'OVL') && roundOption === 'FrameOnly')} 
                 >
                   <option value="">Select Finish</option>
                   {getFinishOptions().map(opt => (
-                    <option key={opt.code} value={opt.code} className="bg-deepGray text-offWhite">{opt.description}</option>
+                    <option key={opt.code} value={opt.code} className="bg-white text-deepGray">{opt.description}</option>
                   ))}
                 </select>
                 {productType === 'PAN' && panelHasFabric && !fabricType && (
@@ -1081,6 +1257,20 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 )}
               </div>
             )}
+            
+            {/* Display message when finish dropdown is hidden for SUP/OIL */}
+            {((productType === 'CAN' && (fabricType === 'SUP' || fabricType === 'OIL')) ||
+              (productType === 'PAN' && panelHasFabric && (fabricType === 'SUP' || fabricType === 'OIL'))) && (
+                <div className="md:col-span-1">
+                    <label className="block text-offWhite text-sm font-semibold mb-2">
+                        Finish
+                    </label>
+                    <p className="text-lightGreen text-xs p-3 rounded-lg border border-lightGreen">
+                        No finish options for selected fabric.
+                    </p>
+                </div>
+            )}
+
 
             {/* Tray Frame Add-on (Canvas, Panel) */}
             {(productType === 'CAN' || productType === 'PAN') && (
@@ -1090,12 +1280,12 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="trayFrameAddon" value={trayFrameAddon} onChange={(e) => setTrayFrameAddon(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                   disabled={depth === '44'} 
                 >
                   <option value="">No Tray Frame</option>
                   {getTrayFrameAddonOptions().map(opt => (
-                    <option key={opt.code} value={opt.code} className="bg-deepGray text-offWhite">{opt.description}</option>
+                    <option key={opt.code} value={opt.code} className="bg-white text-deepGray">{opt.description}</option>
                   ))}
                 </select>
                 {depth === '44' && (
@@ -1104,8 +1294,8 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
               </div>
             )}
 
-            {/* Bracing Options (Canvas, Stretcher Bar Frame) */}
-            {(productType === 'CAN' || productType === 'STB') && (
+            {/* Bracing Options (Canvas, Stretcher Bar Frame, Panel with Fabric) */}
+            {(['CAN', 'STB'].includes(productType) || (productType === 'PAN' && panelHasFabric)) && (
               <>
                 <div>
                   <label htmlFor="bracingMode" className="block text-offWhite text-sm font-semibold mb-2">
@@ -1113,11 +1303,11 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                   </label>
                   <select
                     id="bracingMode" value={bracingMode} onChange={(e) => setBracingMode(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                   >
-                    <option value="Standard" className="bg-deepGray text-offWhite">Standard (Automatic)</option>
-                    <option value="None" className="bg-deepGray text-offWhite">No Braces</option>
-                    <option value="Custom" className="bg-deepGray text-offWhite">Custom Braces</option>
+                    <option value="Standard" className="bg-white text-deepGray">Standard (Automatic)</option>
+                    <option value="None" className="bg-white text-deepGray">No Braces</option>
+                    <option value="Custom" className="bg-white text-deepGray">Custom Braces</option>
                   </select>
                 </div>
                 {bracingMode === 'Custom' && ( 
@@ -1128,7 +1318,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                       </label>
                       <input
                         type="number" step="1" min="0" max="3" id="customHBraces" value={customHBraces} onChange={(e) => setCustomHBraces(parseInt(e.target.value) || 0)}
-                        className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                       />
                     </div>
                     <div>
@@ -1137,7 +1327,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                       </label>
                       <input
                         type="number" step="1" min="0" max="3" id="customWBraces" value={customWBraces} onChange={(e) => setCustomWBraces(parseInt(e.target.value) || 0)}
-                        className="w-full p-3 rounded-lg bg-white/10 text-offWhite border border-lightGreen focus:outline-none focus:ring-2 focus:ring-accentGold focus:border-lightGreen"
+                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                       />
                     </div>
                   </>
@@ -1190,12 +1380,18 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                       <li><span className="font-semibold">Fabric Cost:</span> £{costBreakdown.fabricCost.toFixed(2)}</li>
                       <li><span className="font-semibold">Finish Cost:</span> £{costBreakdown.finishCost.toFixed(2)}</li>
                       <li><span className="font-semibold">Profile Cost:</span> £{costBreakdown.profileCost.toFixed(2)}</li>
+                      {costBreakdown.panelMaterialCost > 0 && <li><span className="font-semibold">Panel Material Cost:</span> £{costBreakdown.panelMaterialCost.toFixed(2)}</li>}
+                      {costBreakdown.roundMaterialCost > 0 && <li><span className="font-semibold">Round/Oval Material Cost:</span> £{costBreakdown.roundMaterialCost.toFixed(2)}</li>}
                       <li><span className="font-semibold">Tray Frame Cost:</span> £{costBreakdown.trayFrameCost.toFixed(2)}</li>
                       <li><span className="font-semibold">Brace Cost:</span> £{costBreakdown.braceCost.toFixed(2)}</li>
+                      <li><span className="font-semibold">Wedge Cost:</span> £{costBreakdown.wedgeCost.toFixed(2)}</li> 
+                      <li><span className="font-semibold">Key Cost:</span> £{costBreakdown.keyCost.toFixed(2)}</li>   
                       <li><span className="font-semibold">Packaging Cost:</span> £{costBreakdown.packagingCost.toFixed(2)}</li> 
                       <li className="font-bold text-lg pt-2 border-t border-lightGreen/50"><span className="font-semibold">Subtotal (before markup):</span> £{costBreakdown.subtotal.toFixed(2)}</li>
-                      <li><span className="font-semibold">Markup ({ (costBreakdown.subtotal > 0 ? (100 * (costBreakdown.markupAmount / costBreakdown.subtotal)).toFixed(0) : 0)}%):</span> £{costBreakdown.markupAmount.toFixed(2)}</li> 
-                      <li className="font-bold text-lg"><span className="font-semibold">Final Price (before min. floor):</span> £{costBreakdown.finalPriceNet.toFixed(2)}</li>
+                      {/* Markup percentage display: (multiplier - 1) * 100 */}
+                      <li><span className="font-semibold">Markup ({ (costBreakdown.subtotal > 0 ? (((costBreakdown.finalPriceBeforeVAT / costBreakdown.subtotal) - 1) * 100).toFixed(0) : 0)}%):</span> £{costBreakdown.markupAmount.toFixed(2)}</li> 
+                      <li className="font-bold text-lg"><span className="font-semibold">Price (before VAT):</span> £{costBreakdown.finalPriceBeforeVAT.toFixed(2)}</li>
+                      <li className="font-bold text-lg"><span className="font-semibold">Final Price (VAT Inc.):</span> £{costBreakdown.finalPriceWithVAT.toFixed(2)}</li>
                   </ul>
               </div>
           )}
