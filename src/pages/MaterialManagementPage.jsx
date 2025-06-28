@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, doc, updateDoc, deleteDoc, query, onSnapshot, writeBatch } from 'firebase/firestore'; 
-import StockLevelChart from './StockLevelChart'; // Import StockLevelChart
+import StockLevelChart from '../components/StockLevelChart'; // Import StockLevelChart
 import { colors, commonUnits, materialTypes } from '../utils/constants'; // Import constants
 
 function MaterialManagementPage({ onInternalNav, db, firestoreAppId }) { // Receive db and firestoreAppId

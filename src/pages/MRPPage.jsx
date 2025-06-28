@@ -2,7 +2,7 @@
 // Main landing page for the MRP System, providing navigation to sub-sections.
 
 import React from 'react';
-import DashboardCard from './DashboardCard'; // Import DashboardCard
+import DashboardCard from '../components/DashboardCard'; // Import DashboardCard
 import { colors } from '../utils/constants'; // Import colors from centralized constants
 
 function MRPPage({ onInternalNav }) {

@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allows ANYONE (including unauthenticated users) to read materials at the public path
+    match /artifacts/default-app-id/public/data/materials/{materialId} {
+      allow read;
+    }
+
+    // --- UPDATED RULE FOR users_allowed PATH ---
+    // Allows authenticated users to read the list of authorized UIDs under default-app-id/app_config/users/users_allowed
+    match /artifacts/default-app-id/app_config/users/users_allowed/{userId} {
+      allow read: if request.auth != null;
+    }
+    // --- END UPDATED RULE ---
+
+    // These collections will be used later and require authorization (adjust paths if they become nested too)
+    match /artifacts/default-app-id/public/data/quotes/{quoteId} {
+      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/artifacts/default-app-id/app_config/users/users_allowed/$(request.auth.uid));
+    }
+    match /artifacts/default-app-id/public/data/orders/{orderId} {
+      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/artifacts/default-app-id/app_config/users/users_allowed/$(request.auth.uid));
+    }
+
+    // General rule for other app_config documents (like service templates or kanban columns)
+    // IMPORTANT: If 'app_config' ever gets sub-collections beyond 'users',
+    // you might need a more specific rule here or create separate rules for each.
+    match /artifacts/default-app-id/app_config/{document=**} {
+        allow read, write: if request.auth != null && exists(/databases/$(database)/documents/artifacts/default-app-id/app_config/users/users_allowed/$(request.auth.uid));
+    }
+
+    // Deny all other access by default to prevent unintended public exposure
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,124 +1,299 @@
 // src/App.jsx
-// This is the main application entry point. It handles Firebase initialization,
-// authentication, and then renders the CentralizedDashboard component,
-// passing down necessary Firebase instances and user information.
+// This is the root component of the application. It handles Firebase initialization,
+// user authentication (Google Sign-In), authorization checks, and routes users
+// to either the public-facing quote page, the internal authenticated dashboard,
+// or an access denied page based on their login and authorization status.
+//
+// FIX: Added a direct, inline 'DEFAULT_FIREBASE_CONFIG' as an ultimate fallback
+// to ensure Firebase initialization never fails due to an empty config.
+// The external firebase-config.js is still used as the primary fallback when
+// __firebase_config is not available.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth'; 
-import { getFirestore } from 'firebase/firestore'; 
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
+import { getFirestore, doc, getDoc, collection } from 'firebase/firestore';
 
-// Import the main dashboard component (now modularized)
-import CentralizedDashboard from './components/CentralizedDashboard';
+// Import your page components
+import PublicQuotePage from './pages/PublicQuotePage';
+import InternalDashboardPage from './pages/InternalDashboardPage';
+import AccessDeniedPage from './pages/AccessDeniedPage';
 
-// Main App component (handles global Firebase init and top-level routing)
+// Import constants for styling
+import { colors } from './utils/constants';
+
+// Define a DEFAULT_FIREBASE_CONFIG as a guaranteed fallback.
+// This should match your src/firebase-config.js 'firebaseConfig' object EXACTLY.
+// This ensures that even if dynamic import or window.__firebase_config fails,
+// the app always has a valid config to initialize Firebase.
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDwiZCSXUm-zOwXbkTL_yI8Vn-B2xNtaU8",
+  authDomain: "hm-canvases-alliem-art.firebaseapp.com",
+  projectId: "hm-canvases-alliem-art",
+  storageBucket: "hm-canvases-alliem-art.firebasestorage.app",
+  messagingSenderId: "544423481137",
+  appId: "default-app-id", // Use default-app-id as the app's internal ID
+  measurementId: "G-D23Z6GBTH0"
+};
+
+const DEFAULT_FIREBASE_APP_ID_FOR_PATHS = "default-app-id";
+
 function App() {
-  const [firebaseReady, setFirebaseReady] = useState(false);
-  const [db, setDb] = useState(null); 
+  // State for Firebase instances and user authentication
+  const [app, setApp] = useState(null);
+  const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
-  const [userId, setUserId] = useState(null);
-  // This will hold the specific App ID used for Firestore collection paths.
-  // It will be determined based on whether the app is in Canvas or deployed.
-  const [firestoreAppId, setFirestoreAppId] = useState(null); 
+  const [user, setUser] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true); // Tracks initial auth state loading
+  const [isAuthorized, setIsAuthorized] = useState(false); // Tracks if authenticated user is on allowlist
 
-  // Define colors locally for the loading screen before constants are imported
-  const colors = {
-    deepGray: '#111827', 
-    offWhite: '#F3F4F6', 
-  };
+  // State to hold Firebase config loaded from external file (if needed)
+  const [externalFirebaseConfig, setExternalFirebaseConfig] = useState({});
+  const [externalDeployedFirestoreAppId, setExternalDeployedFirestoreAppId] = useState('default-app-id');
 
-
-  // Firebase Initialization and Authentication (runs once for the whole app)
+  // Dynamically import firebase-config.js. This ensures it's loaded only once and asynchronously.
   useEffect(() => {
-    const initFirebase = async () => {
-      let firebaseConfigToUse;
-      let determinedAppIdForFirestore; 
-
+    const loadFirebaseConfig = async () => {
       try {
-        if (typeof __firebase_config !== 'undefined') {
-          // Running in Canvas environment: use Canvas-provided config and app ID
-          firebaseConfigToUse = JSON.parse(__firebase_config);
-          // Canvas specific App ID is in __app_id
-          determinedAppIdForFirestore = typeof __app_id !== 'undefined' ? __app_id : 'default-canvas-app-id'; 
-          console.log("Firebase: Using config from Canvas environment.");
-        } else {
-          // Running outside Canvas (e.g., Firebase Hosting): dynamically import config
-          console.log("Firebase: __firebase_config not found. Attempting to import from firebase-config.js.");
-          // Dynamic import for firebase-config.js (needs to be explicitly imported for non-Canvas)
-          const module = await import('./firebase-config'); 
-          firebaseConfigToUse = module.firebaseConfig;
-          // Use the 'deployedFirestoreAppId' from firebase-config.js for deployed pathing
-          determinedAppIdForFirestore = module.deployedFirestoreAppId; 
-
-          if (!firebaseConfigToUse || !firebaseConfigToUse.apiKey || firebaseConfigToUse.apiKey === "YOUR_ACTUAL_API_KEY_FROM_FIREBASE_CONSOLE") {
-            // This checks if the imported config is valid or still contains placeholders
-            throw new Error("Firebase configuration from firebase-config.js is missing or invalid. Please ensure it's correctly set up with your actual Firebase project details.");
-          }
-          console.log("Firebase: Successfully imported config from firebase-config.js.");
-        }
-
-        // Initialize Firebase App
-        const app = initializeApp(firebaseConfigToUse);
-        const firebaseAuth = getAuth(app);
-        const firestoreDb = getFirestore(app); 
-
-        // Set all state variables after successful initialization
-        setDb(firestoreDb); 
-        setAuth(firebaseAuth); // Although auth is not directly passed, good to have it in state for consistency
-        setFirestoreAppId(determinedAppIdForFirestore); // Set the determined ID for Firestore paths
-
-        console.log("Firebase app initialized successfully. Firestore App ID for paths:", determinedAppIdForFirestore);
-
-        // Authentication logic
-        const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
-          if (user) {
-            setUserId(user.uid);
-            console.log("Firebase user authenticated with ID:", user.uid);
+        const firebaseConfigModule = await import('./firebase-config.js');
+        if (firebaseConfigModule && firebaseConfigModule.firebaseConfig) {
+          setExternalFirebaseConfig(firebaseConfigModule.firebaseConfig);
+          if (firebaseConfigModule.deployedFirestoreAppId) {
+            setExternalDeployedFirestoreAppId(firebaseConfigModule.deployedFirestoreAppId);
+            console.log("Firebase: Successfully loaded config and deployedFirestoreAppId from firebase-config.js.");
           } else {
-            console.log("No Firebase user found, attempting sign-in.");
-            try {
-              if (typeof __initial_auth_token !== 'undefined') {
-                // Canvas environment authentication
-                await signInWithCustomToken(firebaseAuth, __initial_auth_token);
-                console.log("Signed in with custom token (Canvas).");
-              } else {
-                // Firebase Hosting / other environments authentication (anonymous is common for public apps)
-                await signInAnonymously(firebaseAuth);
-                console.log("Signed in anonymously (Hosting/Other).");
-              }
-            } catch (error) {
-              console.error("Error during Firebase sign-in:", error);
-            }
+            setExternalDeployedFirestoreAppId(firebaseConfigModule.firebaseConfig.appId || 'default-app-id');
+            console.warn("Firebase: firebase-config.js found but 'deployedFirestoreAppId' export missing. Using appId from config or default.");
           }
-          setFirebaseReady(true); // Set ready after auth state is determined
-        });
-
-        // Cleanup function for auth listener
-        return () => unsubscribe();
-
-      } catch (e) {
-        // Log critical errors during Firebase initialization
-        console.error("Critical error during Firebase initialization:", e.message);
-        setFirebaseReady(false); // Ensure firebaseReady is false if initialization fails
+        } else {
+          console.warn("Firebase: firebase-config.js found but 'firebaseConfig' export missing.");
+        }
+      } catch (error) {
+        console.warn("Firebase: firebase-config.js not found or error importing. This is expected if running in Canvas IDE directly without local setup.");
+        console.warn("Error details:", error.message);
       }
     };
+    loadFirebaseConfig();
+  }, []); // Run only once on mount
 
-    initFirebase();
-  }, []); // Empty dependency array, runs once on mount
+  // Determine Firebase config to use: prioritize global Canvas variable, then local file, then default inline
+  const firebaseConfigToUse = useMemo(() => {
+    let config = {};
+    if (typeof window.__firebase_config !== 'undefined' && typeof window.__firebase_config === 'string') {
+      try {
+        config = JSON.parse(window.__firebase_config);
+      } catch (e) {
+        console.error("Error parsing window.__firebase_config:", e);
+      }
+    }
+    // If Canvas global is empty, try the external config, otherwise use the DEFAULT_FIREBASE_CONFIG
+    if (Object.keys(config).length === 0) {
+      if (Object.keys(externalFirebaseConfig).length > 0) {
+        config = externalFirebaseConfig;
+      } else {
+        config = DEFAULT_FIREBASE_CONFIG; // Ultimate fallback
+        console.warn("Firebase: Using DEFAULT_FIREBASE_CONFIG as no other config was found.");
+      }
+    }
+    return config;
+  }, [externalFirebaseConfig]); // Dependency on externalFirebaseConfig ensures update when it loads
+
+  // Determine App ID for Firestore paths: prioritize global Canvas variable, then explicitly deployedFirestoreAppId, then default inline
+  const firestoreAppId = useMemo(() => {
+    let id = DEFAULT_FIREBASE_APP_ID_FOR_PATHS; // Ultimate fallback
+    if (typeof window.__app_id !== 'undefined' && typeof window.__app_id === 'string') {
+      id = window.__app_id;
+    } else if (externalDeployedFirestoreAppId && externalDeployedFirestoreAppId !== DEFAULT_FIREBASE_APP_ID_FOR_PATHS) {
+      id = externalDeployedFirestoreAppId;
+    } else if (externalFirebaseConfig.appId) {
+      id = externalFirebaseConfig.appId;
+    }
+    return id;
+  }, [externalDeployedFirestoreAppId, externalFirebaseConfig]);
 
 
-  // The App component renders CentralizedDashboard once Firebase is ready.
-  // We now explicitly check for db and firestoreAppId to be non-null.
-  if (!firebaseReady || !db || !firestoreAppId) { 
+  // Memoize firebase initialization to run only once
+  useEffect(() => {
+    // This check is now mostly defensive, as firebaseConfigToUse should always have content now
+    if (Object.keys(firebaseConfigToUse).length === 0) {
+      console.error("Firebase config is empty. Should not happen with inline fallback. Cannot initialize Firebase.");
+      setLoadingAuth(false);
+      return;
+    }
+
+    if (!app) {
+      try {
+        const firebaseApp = initializeApp(firebaseConfigToUse);
+        const firestoreDb = getFirestore(firebaseApp);
+        const firebaseAuth = getAuth(firebaseApp);
+
+        setApp(firebaseApp);
+        setDb(firestoreDb);
+        setAuth(firebaseAuth);
+
+        console.log("Firebase app initialized successfully. Firestore App ID for paths:", firestoreAppId);
+      } catch (error) {
+        console.error("Failed to initialize Firebase:", error);
+        setLoadingAuth(false);
+      }
+    }
+  }, [app, firestoreAppId, firebaseConfigToUse, loadingAuth]);
+
+
+  const checkAuthorization = useCallback(async (uid) => {
+    if (!db) {
+      console.warn("Firestore DB not available for authorization check.");
+      return false;
+    }
+    try {
+      if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
+        console.log("Development environment: Bypassing user allowlist check.");
+        return true;
+      }
+      const allowedUsersRef = doc(db, `artifacts/${firestoreAppId}/app_config/users/users_allowed`, uid);
+      const docSnap = await getDoc(allowedUsersRef);
+      const authorized = docSnap.exists();
+      console.log(`Authorization check for UID ${uid}: ${authorized ? 'Authorized' : 'NOT Authorized'}`);
+      return authorized;
+    } catch (error) {
+      console.error("Error checking user authorization:", error);
+      return false;
+    }
+  }, [db, firestoreAppId]);
+
+  useEffect(() => {
+    if (!auth || !db) return;
+
+    const anonymousSignIn = async () => {
+      if (typeof window.__initial_auth_token === 'undefined' || !window.__initial_auth_token) {
+        try {
+          await signInAnonymously(auth);
+          console.log("Signed in anonymously for public access.");
+        } catch (error) {
+          console.error("Error signing in anonymously:", error);
+        } finally {
+          if (user === null) setLoadingAuth(false);
+        }
+      }
+    };
+    
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        console.log("Firebase user authenticated with ID:", currentUser.uid);
+
+        if (!currentUser.isAnonymous) {
+            const authorized = await checkAuthorization(currentUser.uid);
+            setIsAuthorized(authorized);
+            if (!authorized) {
+                console.warn("User is authenticated but NOT authorized to access internal dashboard.");
+            }
+        } else {
+            setIsAuthorized(false);
+        }
+      } else {
+        setUser(null);
+        setIsAuthorized(false);
+        console.log("No Firebase user authenticated.");
+        anonymousSignIn();
+      }
+      setLoadingAuth(false);
+    });
+
+    return () => unsubscribe();
+  }, [auth, db, checkAuthorization]);
+
+  useEffect(() => {
+    if (auth && typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
+      const handleCustomTokenLogin = async () => {
+        try {
+          await signInWithCustomToken(auth, window.__initial_auth_token);
+          console.log("Firebase user authenticated with custom token.");
+        } catch (error) {
+          console.error("Error signing in with custom token:", error);
+          setLoadingAuth(false);
+        }
+      };
+      handleCustomTokenLogin();
+    } else if (auth && typeof window.__initial_auth_token === 'undefined' && loadingAuth) {
+        setLoadingAuth(false);
+    }
+  }, [auth, loadingAuth]);
+
+
+  const signInWithGoogle = useCallback(async () => {
+    if (!auth) {
+      console.error("Firebase Auth is not initialized.");
+      return;
+    }
+    setLoadingAuth(true);
+    const provider = new GoogleAuthProvider();
+    try {
+      if (auth.currentUser) {
+        await signOut(auth);
+        console.log("Signed out current user before Google sign-in.");
+      }
+      await signInWithPopup(auth, provider);
+      console.log("Google Sign-In successful.");
+    } catch (error) {
+      console.error("Google Sign-In failed:", error.code, error.message);
+      if (error.code === 'auth/popup-closed-by-user') {
+        console.log("Sign-in popup closed by user.");
+      } else {
+        console.error("An unexpected error occurred during Google Sign-In.");
+      }
+      setLoadingAuth(false);
+    }
+  }, [auth]);
+
+  const signOutUser = useCallback(async () => {
+    if (!auth) return;
+    try {
+      await signOut(auth);
+      setUser(null);
+      setIsAuthorized(false);
+      console.log("User signed out.");
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  }, [auth]);
+
+  if (loadingAuth || !app || !db || !auth) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: colors.deepGray }}>
-        <p className="text-offWhite text-xl">Initializing Firebase...</p>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: colors.deepGray, color: colors.offWhite }}>
+        <p className="text-xl">Loading application...</p>
       </div>
     );
   }
 
-  // Pass db, userId, firebaseReady, and the new firestoreAppId prop down.
-  return <CentralizedDashboard db={db} userId={userId} firebaseReady={firebaseReady} firestoreAppId={firestoreAppId} />;
+  if (user && !user.isAnonymous && isAuthorized) {
+    return (
+      <InternalDashboardPage
+        db={db}
+        auth={auth}
+        user={user}
+        firestoreAppId={firestoreAppId}
+        signOutUser={signOutUser}
+      />
+    );
+  }
+
+  if (user && !user.isAnonymous && !isAuthorized) {
+    return (
+      <AccessDeniedPage
+        signOutUser={signOutUser}
+      />
+    );
+  }
+
+  return (
+    <PublicQuotePage
+      signInWithGoogle={signInWithGoogle}
+      db={db}
+      firestoreAppId={firestoreAppId}
+      userId={user ? user.uid : null}
+    />
+  );
 }
 
 export default App;
