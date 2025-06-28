@@ -35,7 +35,7 @@ function CalendarComponent() {
       days.push(
         <div 
           key={`day-${day}`} 
-          className={`p-2 text-center rounded-lg transition-colors duration-200 cursor-pointer`}
+          className={`p-2 text-center rounded-xl transition-colors duration-200 cursor-pointer`}
           style={{
             backgroundColor: isToday ? colors.accentGold : 'transparent',
             color: isToday ? colors.deepGray : colors.offWhite, 
@@ -110,7 +110,7 @@ function CalendarComponent() {
 
       <button
         onClick={openGoogleCalendar}
-        className="mt-4 p-3 rounded-lg font-semibold transition-colors duration-200"
+        className="mt-4 p-3 rounded-xl font-semibold transition-colors duration-200"
         style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
       >
         Go to Google Calendar

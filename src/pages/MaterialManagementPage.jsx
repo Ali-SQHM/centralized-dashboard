@@ -3,12 +3,13 @@
 // Displays current stock levels using the StockLevelChart.
 //
 // Updates:
-// 1. All "card" backgrounds changed to bg-mediumGreen.
-// 2. All input/select fields changed to bg-white text-deepGray border-lightGreen focus:ring-lightGreen rounded-xl.
-// 3. Headings within cards (h2, h3) set to text-offWhite or text-white for best contrast.
-// 4. Labels set to text-offWhite.
-// 5. Buttons styled consistently with rounded-xl.
-// 6. Table styling adjusted for consistency within the mediumGreen card.
+// 1. CRITICAL RESPONSIVENESS FIX: Comprehensive application of `w-full` and `min-w-0`
+//    to the page's outermost container and to EACH of its immediate child 'card' divs.
+//    This forces these elements to correctly participate in the flex layout of the dashboard
+//    and to allow their *internal* content (like chart bars or table columns) to trigger
+//    their respective `overflow-x-auto` scrollbars, preventing page-level overflow.
+// 2. All styling (colors, rounding, inputs, etc.) remains as previously confirmed.
+// 3. StockLevelChart import is correct and will receive an updated simpler setup.
 
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, doc, updateDoc, deleteDoc, query, onSnapshot, writeBatch } from 'firebase/firestore'; 
@@ -179,8 +180,6 @@ function MaterialManagementPage({ db, firestoreAppId }) {
       console.error("Firebase not initialized or firestoreAppId missing.");
       return;
     }
-    // Using a custom modal/confirmation if alert() is not allowed, but for simplicity
-    // and given previous use of alert(), retaining window.confirm for now.
     const confirmDelete = window.confirm("Are you sure you want to delete this material?"); 
     if (!confirmDelete) {
       return;
@@ -320,40 +319,41 @@ function MaterialManagementPage({ db, firestoreAppId }) {
 
 
   return (
-    // Main container uses deepGray background, offWhite text, and rounded-xl corners (from DashboardHome)
-    <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl">
+    // Main container for Material Management page content. Now explicitly flex-col, w-full, and min-w-0.
+    // This div needs to correctly fill the space provided by its parent (the <main> tag in InternalDashboardPage).
+    <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl w-full flex flex-col min-w-0">
       <h1 className="text-4xl font-extrabold text-blue-400 mb-8">Materials Management</h1>
       <p className="text-gray-300 mb-6">Manage your raw material inventory. Add, edit, and delete materials. These materials will be accessible to the Instant Quote App.</p>
 
       {/* 1. Stock Levels Overview Chart Card */}
-      {/* Card styling: bg-mediumGreen, rounded-xl, shadow-lg, border-gray-700 */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">Stock Levels Overview</h2> {/* Heading inside card is offWhite */}
+      {/* Card container: w-full and min-w-0. Important that flex items have min-w-0 to enable shrinking. */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
+        <h2 className="text-2xl font-bold text-offWhite mb-4">Stock Levels Overview</h2>
         <StockLevelChart materials={materials} />
       </div>
 
       {/* 2. Filter and Search Bar Card */}
-      {/* Card styling: bg-mediumGreen, rounded-xl, shadow-lg, border-gray-700 */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
+      {/* Card container: w-full and min-w-0. Important for responsiveness. */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0 flex flex-col sm:flex-row gap-4">
+        <div className="flex-1 min-w-0"> {/* Added min-w-0 to flex-1 children too */}
           <label htmlFor="search" className="block text-offWhite text-sm font-bold mb-1">Search by Code or Description</label>
           <input
             type="text"
             id="search"
+            name="search" // Ensure name attribute is present
             placeholder="e.g., WOOD-001, Oak Timber"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            // Input styling: bg-white, text-deepGray, border-lightGreen, focus:ring-lightGreen, rounded-xl
             className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400"
           />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0"> {/* Added min-w-0 to flex-1 children too */}
           <label htmlFor="filterMaterialType" className="block text-offWhite text-sm font-bold mb-1">Filter by Material Type</label>
           <select
             id="filterMaterialType"
+            name="filterMaterialType" // Ensure name attribute is present
             value={filterMaterialType}
             onChange={(e) => setFilterMaterialType(e.target.value)}
-            // Select styling: bg-white, text-deepGray, border-lightGreen, focus:ring-lightGreen, rounded-xl
             className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200"
           >
             <option value="" className="bg-white text-deepGray">All Types</option> 
@@ -365,18 +365,17 @@ function MaterialManagementPage({ db, firestoreAppId }) {
       </div>
 
       {/* 3. Materials List/Table Card */}
-      {/* Card styling: bg-mediumGreen, rounded-xl, shadow-lg, border-gray-700 */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">Current Materials</h2> {/* Heading inside card is offWhite */}
+      {/* Card container: w-full and min-w-0. Table content needs its own overflow. */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
+        <h2 className="text-2xl font-bold text-offWhite mb-4">Current Materials</h2>
         {loading && <p className="text-gray-400">Loading materials...</p>}
         {error && <p className="text-red-400">{error}</p>}
         
-        {/* Table container styling: rounded-xl, border-gray-700 */}
-        <div className="overflow-x-auto rounded-xl border border-gray-700">
+        {/* Table container: overflow-x-auto to ensure horizontal scroll on small screens. Also needs min-w-0. */}
+        <div className="overflow-x-auto rounded-xl border border-gray-700 min-w-0">
           <table className="min-w-full divide-y divide-gray-700">
             <thead>
               <tr>
-                {/* Table header styling: bg-gray-700 (consistent), text-gray-300, rounded-tl-xl/rounded-tr-xl */}
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 rounded-tl-xl">Code</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300">Description</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300">Material Type</th>
@@ -394,17 +393,16 @@ function MaterialManagementPage({ db, firestoreAppId }) {
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 rounded-tr-xl">Actions</th>
               </tr>
             </thead>
-            {/* Table body styling: bg-mediumGreen (for rows), divide-gray-700 */}
             <tbody className="bg-mediumGreen divide-y divide-gray-700">
               {!loading && filteredMaterialsTable.length === 0 && !error && (
                 <tr>
-                  <td colSpan="15" className="px-4 py-4 text-center text-offWhite/70"> {/* Use offWhite for placeholder text */}
+                  <td colSpan="15" className="px-4 py-4 text-center text-offWhite/70">
                     No materials added yet. Use the form below or upload a CSV to add your first material!
                   </td>
                 </tr>
               )}
               {filteredMaterialsTable.map(material => ( // Looping through filtered materials to display
-                <tr key={material.id} className="hover:bg-lightGreen transition-colors duration-150"> {/* Hover effect with lightGreen */}
+                <tr key={material.id} className="hover:bg-lightGreen transition-colors duration-150">
                   <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-white">{material.code}</td>
                   <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.description}</td>
                   <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.materialType}</td> 
@@ -441,14 +439,13 @@ function MaterialManagementPage({ db, firestoreAppId }) {
       </div>
 
       {/* 4. Material Entry/Edit Form Card */}
-      {/* Card styling: bg-mediumGreen, rounded-xl, shadow-lg, border-gray-700 */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8">
+      {/* Card container: w-full and min-w-0 for responsiveness */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
         <h2 className="text-2xl font-bold text-offWhite mb-4">{editingMaterialId ? 'Edit Material' : 'Add New Material'}</h2> {/* Heading inside card is offWhite */}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label htmlFor="code" className="block text-offWhite text-sm font-bold mb-1">Code</label>
             <input type="text" id="code" name="code" value={formData.code} onChange={handleInputChange} required
-                   // Input styling: bg-white, text-deepGray, border-lightGreen, focus:ring-lightGreen, rounded-xl
                    className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
           </div>
           <div>
@@ -540,9 +537,9 @@ function MaterialManagementPage({ db, firestoreAppId }) {
       </div>
 
       {/* CSV Upload Section Card */}
-      {/* Card styling: bg-mediumGreen, rounded-xl, shadow-lg, border-gray-700 */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">Upload Materials from CSV</h2> {/* Heading inside card is offWhite */}
+      {/* Card container: w-full and min-w-0. */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
+        <h2 className="text-2xl font-bold text-offWhite mb-4">Upload Materials from CSV</h2>
         <p className="text-gray-300 text-sm mb-4">
           Upload a CSV file containing your materials. The CSV must have the following header row:<br/>
           <code className="text-white bg-deepGray px-2 py-1 rounded text-xs">code,description,materialType,puom,pcp,muom,unitConversionFactor,overheadFactor,currentStockPUOM,minStockPUOM,supplier</code>
@@ -552,7 +549,6 @@ function MaterialManagementPage({ db, firestoreAppId }) {
             type="file"
             accept=".csv"
             onChange={handleFileUpload}
-            // File input styling consistent with other inputs
             className="block w-full text-sm text-offWhite file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 transition-colors duration-200 cursor-pointer"
           />
         </div>

@@ -4,20 +4,16 @@
 // content pages or external links.
 //
 // Updates:
-// 1. CRITICAL BUILD FIX: Meticulously re-typed the 'className' for the sidebar (<aside>)
-//    to resolve "Expected '...' but found '}'" error, ensuring no hidden characters
-//    or JSX parsing issues.
-// 2. Confirmed and applied definitive styling for dashboard shell:
-//    - Main background: bg-deepGray
-//    - Sidebar background: bg-darkGray
-//    - Main content area background: bg-darkGray
-//    - Borders and shadows applied consistently.
-//    - Rounded-xl consistency across dashboard shell.
-// 3. SVG Icon paths re-confirmed (CloseIcon, MenuIcon) as a prior fix.
+// 1. CRITICAL RESPONSIVENESS FIX: Added 'min-w-0' to the <main> tag to ensure it
+//    can correctly shrink in flex context and allow its children to manage overflow.
+// 2. All styling (colors, rounded-xl, react-icons) remains as previously confirmed.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+
+// Import Font Awesome 6 icons from react-icons
+import { FaBars, FaXmark, FaArrowUpRightFromSquare } from 'react-icons/fa6'; // Added FaArrowUpRightFromSquare
 
 // Import all content pages
 import MaterialManagementPage from './MaterialManagementPage';
@@ -30,19 +26,6 @@ import InstantQuoteAppPage from './InstantQuoteAppPage'; // Correct import for y
 import DashboardHome from '../components/DashboardHome';
 
 import { colors } from '../utils/constants';
-
-// Phosphor icons (using inline SVGs with CORRECT paths)
-const MenuIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 256" fill="currentColor">
-    <path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"></path>
-  </svg>
-);
-
-const CloseIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 256" fill="currentColor">
-    <path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.32l-66.34,66.34a8,8,0,0,1-11.32-11.32L116.68,128,50.34,61.66a8,8,0,0,1,11.32-11.32L128,116.68l66.34-66.34a8,8,0,0,1,11.32,11.32L139.32,128Z"></path>
-  </svg>
-);
 
 // Navigation sections for the sidebar
 const navSections = [
@@ -158,8 +141,7 @@ const InternalDashboardPage = ({ db, auth, user, firestoreAppId, signOutUser }) 
     <div className="flex min-h-screen bg-deepGray text-offWhite"> {/* Main background color */}
       {/* Sidebar - Desktop & Mobile */}
       <aside
-        // CRITICAL FIX FOR className BELOW: Meticulously re-typed to resolve the parsing error.
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-darkGray transform ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-darkGray transform ${ // Sidebar background color
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } md:translate-x-0 transition-transform duration-300 ease-in-out md:relative md:flex-shrink-0 md:flex md:flex-col rounded-r-xl shadow-xl`}
       >
@@ -168,7 +150,7 @@ const InternalDashboardPage = ({ db, auth, user, firestoreAppId, signOutUser }) 
             HM Manufacturing
           </h2>
           <button onClick={toggleSidebar} className="md:hidden text-offWhite hover:text-gray-300 focus:outline-none">
-            <CloseIcon />
+            <FaXmark size={24} /> {/* Using FaXmark (Close Icon) from react-icons */}
           </button>
         </div>
 
@@ -191,9 +173,8 @@ const InternalDashboardPage = ({ db, auth, user, firestoreAppId, signOutUser }) 
                         className="flex items-center w-full px-4 py-2 rounded-xl text-left transition duration-200 hover:bg-gray-700 text-gray-300 hover:text-white"
                       >
                         {item.name}
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 0 002 2h10a2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
+                        {/* Replaced problematic inline SVG with React Icon */}
+                        <FaArrowUpRightFromSquare size={16} className="ml-2" /> 
                       </a>
                     ) : (
                       <button
@@ -229,11 +210,11 @@ const InternalDashboardPage = ({ db, auth, user, firestoreAppId, signOutUser }) 
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col p-4 md:p-8">
+      <div className="flex-1 flex flex-col p-4 md:p-8"> {/* Added flex flex-col here to manage its children */}
         {/* Mobile Navbar with Hamburger Icon */}
         <header className="md:hidden flex justify-between items-center bg-darkGray p-3 rounded-xl shadow-lg mb-4">
           <button onClick={toggleSidebar} className="text-offWhite hover:text-gray-300 focus:outline-none">
-            <MenuIcon />
+            <FaBars size={24} /> {/* Using FaBars (Menu Icon) from react-icons */}
           </button>
           <h1 className="text-xl font-bold text-offWhite text-center flex-grow mx-2 truncate">
             HM Manufacturing
@@ -247,7 +228,8 @@ const InternalDashboardPage = ({ db, auth, user, firestoreAppId, signOutUser }) 
         </header>
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 rounded-xl p-4 md:p-6 shadow-inner bg-darkGray border border-gray-700 overflow-auto">
+        {/* CRITICAL FIX: Added min-w-0 to allow the content area to shrink */}
+        <main className="flex-1 rounded-xl p-4 md:p-6 shadow-inner bg-darkGray border border-gray-700 overflow-auto min-w-0">
           {renderPage()}
         </main>
       </div>

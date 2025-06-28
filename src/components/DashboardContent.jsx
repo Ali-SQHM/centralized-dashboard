@@ -26,7 +26,7 @@ function DashboardContent({ onInternalNav, mainCards, userId, firebaseReady }) {
             src="/Original on Transparent.png" 
             alt="HM Canvases & Alliem Art Logo" 
             onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/200x80/1A4D2E/F3F4F6?text=Logo" }} 
-            className="max-h-24 md:max-h-32 w-auto rounded-lg shadow-md" 
+            className="max-h-24 md:max-h-32 w-auto rounded-xl shadow-md" 
           />
         </div>
       </header>
@@ -63,7 +63,7 @@ function DashboardContent({ onInternalNav, mainCards, userId, firebaseReady }) {
         <div className="bg-mediumGreen rounded-xl p-6 shadow-xl flex flex-col justify-between" style={{ minHeight: '300px' }}>
           <h3 className="text-xl font-bold text-offWhite mb-2">Monthly Sales (Graph Placeholder)</h3>
           <p className="text-lightGreen">Visualizing canvases made...</p>
-          <div className="h-48 bg-white/10 rounded-lg mt-4 flex items-center justify-center text-white/50 text-sm">
+          <div className="h-48 bg-white/10 rounded-xl mt-4 flex items-center justify-center text-white/50 text-sm">
               [ Graph ]
           </div>
         </div>
