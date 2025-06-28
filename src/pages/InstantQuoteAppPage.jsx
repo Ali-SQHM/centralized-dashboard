@@ -1,4 +1,4 @@
-// src/components/InstantQuoteAppPage.jsx
+// src/pages/InstantQuoteAppPage.jsx
 // Provides the user interface and logic for generating instant quotes for custom canvases.
 // Fix: UNP (Unprimed) and NAT (Natural) are no longer Firestore materials; handled as direct zero cost options.
 // Fix: Tray Frame Wood codes are T25N and T32N.
@@ -1250,7 +1250,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
               id="productType"
               value={productType}
               onChange={(e) => setProductType(e.target.value)}
-              className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+              className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
             >
               <option value="CAN" className="bg-white text-deepGray">Canvas (CAN)</option>
               <option value="PAN" className="bg-white text-deepGray">Painting Panel (PAN)</option>
@@ -1270,7 +1270,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
               id="unit"
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+              className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
             >
               <option value="CM" className="bg-white text-deepGray">CM</option>
               <option value="IN" className="bg-white text-deepGray">IN</option>
@@ -1286,7 +1286,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <input
                   type="number" step="0.1" id="height" value={height} onChange={(e) => setHeight(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                  className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                   placeholder="e.g., 80.0"
                 />
               </div>
@@ -1296,7 +1296,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <input
                   type="number" step="0.1" id="width" value={width} onChange={(e) => setWidth(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                  className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                   placeholder="e.g., 60.0"
                 />
               </div>
@@ -1310,7 +1310,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <input
                   type="number" step="0.1" id="diameter" value={diameter} onChange={(e) => setDiameter(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                  className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                   placeholder="e.g., 120.0"
                 />
               </div>
@@ -1324,7 +1324,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                   </label>
                   <input
                     type="number" step="0.1" id="majorAxis" value={majorAxis} onChange={(e) => setMajorAxis(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                    className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                     placeholder="e.g., 100.0"
                   />
                 </div>
@@ -1334,7 +1334,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                   </label>
                   <input
                     type="number" step="0.1" id="minorAxis" value={minorAxis} onChange={(e) => setMinorAxis(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                    className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                     placeholder="e.g., 70.0"
                   />
                 </div>
@@ -1349,7 +1349,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="depth" value={depth} onChange={(e) => setDepth(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                  className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                 >
                   <option value="">Select Depth</option>
                   {getDepthOptions().map(opt => (
@@ -1369,7 +1369,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                         id="roundOption"
                         value={roundOption}
                         onChange={(e) => setRoundOption(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                     >
                         <option value="Stretched" className="bg-white text-deepGray">Stretched</option>
                         <option value="FrameOnly" className="bg-white text-deepGray">Frame Only</option>
@@ -1407,7 +1407,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="fabricType" value={fabricType} onChange={(e) => setFabricType(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                  className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                   disabled={((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched')} 
                 >
                   <option value="">Select Fabric</option>
@@ -1434,7 +1434,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="finish" value={finish} onChange={(e) => setFinish(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                  className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                   disabled={(productType === 'PAN' && panelHasFabric && !fabricType) || 
                             ((productType === 'RND' || productType === 'OVL') && roundOption === 'FrameOnly')} 
                 >
@@ -1456,7 +1456,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                     <label className="block text-offWhite text-sm font-semibold mb-2">
                         Finish
                     </label>
-                    <p className="text-lightGreen text-xs p-3 rounded-lg border border-lightGreen">
+                    <p className="text-lightGreen text-xs p-3 rounded-xl border border-lightGreen">
                         No finish options for selected fabric.
                     </p>
                 </div>
@@ -1471,7 +1471,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                 </label>
                 <select
                   id="trayFrameAddon" value={trayFrameAddon} onChange={(e) => setTrayFrameAddon(e.target.value)}
-                  className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                  className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                   disabled={depth === '44'} 
                 >
                   <option value="">No Tray Frame</option> 
@@ -1494,7 +1494,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                   </label>
                   <select
                     id="bracingMode" value={bracingMode} onChange={(e) => setBracingMode(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                    className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                     disabled={productType === 'PAN' || productType === 'RND' || productType === 'OVL'} // Disable for PAN, RND, OVL as it's automatic
                   >
                     <option value="Standard" className="bg-white text-deepGray">Standard (Automatic)</option>
@@ -1516,7 +1516,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                       </label>
                       <input
                         type="number" step="1" min="0" max="3" id="customHBraces" value={customHBraces} onChange={(e) => setCustomHBraces(parseInt(e.target.value) || 0)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                       />
                     </div>
                     <div>
@@ -1525,7 +1525,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
                       </label>
                       <input
                         type="number" step="1" min="0" max="3" id="customWBraces" value={customWBraces} onChange={(e) => setCustomWBraces(parseInt(e.target.value) || 0)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                       />
                     </div>
                   </>
@@ -1557,7 +1557,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
             {/* Save Quote Button and Message */}
             <button
               onClick={handleSaveQuote}
-              className="mt-6 p-3 rounded-lg font-semibold transition-colors duration-200"
+              className="mt-6 p-3 rounded-xl font-semibold transition-colors duration-200"
               style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
             >
               Save Quote
@@ -1599,7 +1599,7 @@ function InstantQuoteAppPage({ db, onInternalNav, firestoreAppId, userId }) {
         <div className="mt-8">
           <button
             onClick={() => onInternalNav('mrp')}
-            className="p-3 rounded-lg font-semibold transition-colors duration-200 inline-block"
+            className="p-3 rounded-xl font-semibold transition-colors duration-200 inline-block"
             style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
           >
             Back to MRP System

@@ -1143,7 +1143,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
         {/* Login Button for Internal Staff */}
         <button
             onClick={signInWithGoogle}
-            className="absolute top-4 right-4 flex items-center px-4 py-2 rounded-lg font-semibold transition-colors duration-200 shadow-md z-10"
+            className="absolute top-4 right-4 flex items-center px-4 py-2 rounded-xl font-semibold transition-colors duration-200 shadow-md z-10"
             style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
         >
             <Chrome size={20} className="mr-2" /> Staff Login
@@ -1179,7 +1179,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                     id="productType"
                     value={productType}
                     onChange={(e) => setProductType(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                    className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                     >
                     <option value="CAN" className="bg-white text-deepGray">Canvas (CAN)</option>
                     <option value="PAN" className="bg-white text-deepGray">Painting Panel (PAN)</option>
@@ -1199,7 +1199,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                     id="unit"
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
-                    className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                    className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                     >
                     <option value="CM" className="bg-white text-deepGray">CM</option>
                     <option value="IN" className="bg-white text-deepGray">IN</option>
@@ -1213,7 +1213,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                     </label>
                     <input
                         type="number" step="1" min="1" id="quantity" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                         placeholder="e.g., 1"
                     />
                 </div>
@@ -1227,7 +1227,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <input
                         type="number" step="0.1" id="height" value={height} onChange={(e) => setHeight(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                         placeholder="e.g., 80.0"
                         />
                     </div>
@@ -1237,7 +1237,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <input
                         type="number" step="0.1" id="width" value={width} onChange={(e) => setWidth(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                         placeholder="e.g., 60.0"
                         />
                     </div>
@@ -1251,7 +1251,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <input
                         type="number" step="0.1" id="diameter" value={diameter} onChange={(e) => setDiameter(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                         placeholder="e.g., 120.0"
                         />
                     </div>
@@ -1265,7 +1265,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <input
                             type="number" step="0.1" id="majorAxis" value={majorAxis} onChange={(e) => setMajorAxis(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                            className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                             placeholder="e.g., 100.0"
                         />
                         </div>
@@ -1275,7 +1275,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <input
                             type="number" step="0.1" id="minorAxis" value={minorAxis} onChange={(e) => setMinorAxis(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                            className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                             placeholder="e.g., 70.0"
                         />
                         </div>
@@ -1290,7 +1290,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <select
                         id="depth" value={depth} onChange={(e) => setDepth(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                         >
                         <option value="">Select Depth</option>
                         {getDepthOptions().map(opt => (
@@ -1310,7 +1310,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                                 id="roundOption"
                                 value={roundOption}
                                 onChange={(e) => setRoundOption(e.target.value)}
-                                className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                                className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                             >
                                 <option value="Stretched" className="bg-white text-deepGray">Stretched</option>
                                 <option value="FrameOnly" className="bg-white text-deepGray">Frame Only</option>
@@ -1348,7 +1348,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <select
                         id="fabricType" value={fabricType} onChange={(e) => setFabricType(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                         disabled={((productType === 'RND' || productType === 'OVL') && roundOption === 'Stretched')} 
                         >
                         <option value="">Select Fabric</option>
@@ -1375,7 +1375,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <select
                         id="finish" value={finish} onChange={(e) => setFinish(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                         disabled={(productType === 'PAN' && panelHasFabric && !fabricType) || 
                                     ((productType === 'RND' || productType === 'OVL') && roundOption === 'FrameOnly')} 
                         >
@@ -1397,7 +1397,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                             <label className="block text-offWhite text-sm font-semibold mb-2">
                                 Finish
                             </label>
-                            <p className="text-lightGreen text-xs p-3 rounded-lg border border-lightGreen">
+                            <p className="text-lightGreen text-xs p-3 rounded-xl border border-lightGreen">
                                 No finish options for selected fabric.
                             </p>
                         </div>
@@ -1412,7 +1412,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <select
                         id="trayFrameAddon" value={trayFrameAddon} onChange={(e) => setTrayFrameAddon(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                        className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                         disabled={depth === '44'} 
                         >
                         <option value="">No Tray Frame</option> 
@@ -1435,7 +1435,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         </label>
                         <select
                             id="bracingMode" value={bracingMode} onChange={(e) => setBracingMode(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
+                            className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen"
                             disabled={productType === 'PAN' || productType === 'RND' || productType === 'OVL'}
                         >
                             <option value="Standard" className="bg-white text-deepGray">Standard (Automatic)</option>
@@ -1457,7 +1457,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                             </label>
                             <input
                                 type="number" step="1" min="0" max="3" id="customHBraces" value={customHBraces} onChange={(e) => setCustomHBraces(parseInt(e.target.value) || 0)}
-                                className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                                className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                             />
                             </div>
                             <div>
@@ -1466,7 +1466,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                             </label>
                             <input
                                 type="number" step="1" min="0" max="3" id="customWBraces" value={customWBraces} onChange={(e) => setCustomWBraces(parseInt(e.target.value) || 0)}
-                                className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
+                                className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen placeholder-gray-400"
                             />
                             </div>
                         </>
@@ -1501,7 +1501,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                     {/* Submit Quote Button */}
                     <button
                     onClick={handleQuoteSubmission}
-                    className="mt-6 p-3 rounded-lg font-semibold transition-colors duration-200"
+                    className="mt-6 p-3 rounded-xl font-semibold transition-colors duration-200"
                     style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
                     disabled={!quotePrice || quotePrice === '£0.00' || sku === 'Incomplete configuration' || quantity < 1}
                     >
@@ -1525,7 +1525,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                 <div className="flex justify-center mb-4 space-x-2">
                     <button
                         onClick={() => setActiveInfoTab('profiles')}
-                        className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors duration-200 ${
+                        className={`px-4 py-2 rounded-xl font-semibold text-sm transition-colors duration-200 ${
                             activeInfoTab === 'profiles' ? 'bg-lightGreen text-deepGray' : 'text-offWhite hover:bg-lightGreen/50'
                         }`}
                     >
@@ -1533,7 +1533,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                     </button>
                     <button
                         onClick={() => setActiveInfoTab('fabrics')}
-                        className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors duration-200 ${
+                        className={`px-4 py-2 rounded-xl font-semibold text-sm transition-colors duration-200 ${
                             activeInfoTab === 'fabrics' ? 'bg-lightGreen text-deepGray' : 'text-offWhite hover:bg-lightGreen/50'
                         }`}
                     >
@@ -1541,7 +1541,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                     </button>
                     <button
                         onClick={() => setActiveInfoTab('braces')}
-                        className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors duration-200 ${
+                        className={`px-4 py-2 rounded-xl font-semibold text-sm transition-colors duration-200 ${
                             activeInfoTab === 'braces' ? 'bg-lightGreen text-deepGray' : 'text-offWhite hover:bg-lightGreen/50'
                         }`}
                     >
@@ -1631,7 +1631,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         <label htmlFor="customerName" className="block text-offWhite text-sm font-semibold mb-2">Name <span className="text-red-400">*</span></label>
                         <input
                             type="text" id="customerName" value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
+                            className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
                             placeholder="Your Full Name" required
                         />
                     </div>
@@ -1639,7 +1639,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         <label htmlFor="customerEmail" className="block text-offWhite text-sm font-semibold mb-2">Email <span className="text-red-400">*</span></label>
                         <input
                             type="email" id="customerEmail" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
+                            className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
                             placeholder="your.email@example.com" required
                         />
                     </div>
@@ -1647,7 +1647,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         <label htmlFor="customerPhone" className="block text-offWhite text-sm font-semibold mb-2">Phone (Optional)</label>
                         <input
                             type="tel" id="customerPhone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
+                            className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
                             placeholder="e.g., +44 7123 456789"
                         />
                     </div>
@@ -1655,7 +1655,7 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                         <label htmlFor="customerAddress" className="block text-offWhite text-sm font-semibold mb-2">Delivery Address (Optional)</label>
                         <textarea
                             id="customerAddress" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)}
-                            className="w-full p-3 rounded-lg bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
+                            className="w-full p-3 rounded-xl bg-white text-deepGray border border-lightGreen focus:outline-none focus:ring-2 focus:ring-lightGreen"
                             rows="3" placeholder="Street, City, Postcode"
                         ></textarea>
                     </div>
@@ -1663,14 +1663,14 @@ function PublicQuotePage({ signInWithGoogle, db, firestoreAppId, userId }) {
                     <div className="flex justify-end space-x-3">
                         <button
                             onClick={() => setShowCustomerModal(false)}
-                            className="px-6 py-3 rounded-lg font-semibold transition-colors duration-200"
+                            className="px-6 py-3 rounded-xl font-semibold transition-colors duration-200"
                             style={{ backgroundColor: colors.offWhite, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
                         >
                             Cancel
                         </button>
                         <button
                             onClick={submitCustomerInfoAndQuote}
-                            className="px-6 py-3 rounded-lg font-semibold transition-colors duration-200"
+                            className="px-6 py-3 rounded-xl font-semibold transition-colors duration-200"
                             style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
                             disabled={!customerName || !customerEmail}
                         >

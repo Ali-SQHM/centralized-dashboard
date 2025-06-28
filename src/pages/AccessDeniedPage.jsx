@@ -19,7 +19,7 @@ function AccessDeniedPage({ signOutUser }) {
       </p>
       <button
         onClick={signOutUser}
-        className="px-6 py-3 rounded-lg font-semibold transition-colors duration-200 shadow-md"
+        className="px-6 py-3 rounded-xl font-semibold transition-colors duration-200 shadow-md"
         style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
       >
         Sign Out
