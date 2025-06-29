@@ -2,11 +2,10 @@
 // Displays a bar chart of material stock levels, filterable by material type.
 //
 // Updates:
-// 1. CRITICAL RESPONSIVENESS FIX: Simplified the inner chart bars container.
-//    Removed 'w-fit' and 'min-w-full' from the inner div to allow 'overflow-x-auto'
-//    to function more naturally. The individual bars' `min-width` and `flex-shrink-0`
-//    should force the container to overflow if content exceeds parent width.
-// 2. All styling (colors, rounding, inputs, etc.) and other fixes remain.
+// 1. Re-confirmed that the inner chart bars container (the div with `overflow-x-auto`)
+//    has `min-w-0`. This allows it to shrink and ensures the overflow-x-auto is active.
+// 2. Individual bars retain `min-width: 60px` and `flex-shrink-0` to force content overflow.
+// 3. All styling (colors, rounding, inputs, etc.) and other fixes remain.
 
 import React, { useState } from 'react';
 import { colors, materialTypes } from '../utils/constants'; // Import constants
@@ -52,9 +51,9 @@ function StockLevelChart({ materials }) { // 'materials' prop received from Mate
         // Inner container for the chart bars. This div needs to correctly trigger horizontal scroll.
         // `flex-nowrap` ensures items don't wrap, forcing overflow.
         // `overflow-x-auto` is the key for the scrollbar.
-        // `min-w-0` is added to ensure flex context allows shrinking if needed.
+        // `min-w-0` is crucial here to allow the container to shrink and force the overflow.
         <div
-          className="flex flex-nowrap items-end h-64 overflow-x-auto p-2 border border-lightGreen rounded-xl bg-deepGray min-w-0" // ADDED min-w-0, REMOVED w-fit and min-w-full
+          className="flex flex-nowrap items-end h-64 overflow-x-auto p-2 border border-lightGreen rounded-xl bg-deepGray min-w-0"
         >
           {filteredChartMaterials.map((material, index) => {
             const barHeight = (material.currentStockPUOM / maxStock) * 100; // Percentage of max height
