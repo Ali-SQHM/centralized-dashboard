@@ -1,167 +1,154 @@
 // src/pages/MRPPage.jsx
-// This component will manage the Material Requirements Planning (MRP) system,
-// focusing on processing "Paid" orders for standard products using their SKUs as dynamic BOMs.
-// It will eventually generate batched production lists and material requisitions.
-//
+// This component displays the MRP & Production Planning interface.
 // Updates:
-// 1. CRITICAL RESPONSIVENESS FIX: Added `table-fixed` to the `<table>` element and
-//    `w-full` to ensure it takes 100% of its scrollable container.
-// 2. Added explicit width classes (`w-1/X` or `min-w-[YYpx]`) to `<th>` elements
-//    to guide `table-fixed` behavior and guarantee content overflow for scrollbars.
-// 3. Ensured `min-w-0` is consistently applied to all necessary flex containers and cards.
-// 4. All styling (colors, rounding, inputs, etc.) remains consistent.
+// - **FINAL LAYOUT FIX:** Removed `min-h-screen`, `flex`, `items-center`, `justify-center`
+//   from the outermost div to prevent "excessive padding" when nested in the dashboard.
+//   The page now correctly expands `w-full` and `h-full` within its parent.
+// - Placeholder content for MRP data and cards.
 
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { colors } from '../utils/constants'; // Ensure colors are imported for consistent styling
+import { collection, query, onSnapshot } from 'firebase/firestore'; // Assuming Firestore for MRP data
+import { colors } from '../utils/constants';
 
 function MRPPage({ db, firestoreAppId }) {
-  const [paidStandardOrders, setPaidStandardOrders] = useState([]);
+  const [productionPlans, setProductionPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Function to get the public orders collection reference
-  const getPublicOrdersCollectionRef = () => {
-    if (!db || !firestoreAppId) {
-      console.error("Firestore DB or App ID not available for collection reference in MRPPage.");
-      return null;
-    }
-    // As per blueprint, orders are in artifacts/{appId}/public/data/orders
-    return collection(db, `artifacts/${firestoreAppId}/public/data/orders`);
-  };
-
+  // Dummy data for now - replace with actual Firestore fetch later
   useEffect(() => {
-    if (!db || !firestoreAppId) {
-      console.log("MRP: Skipping data fetch: DB or firestoreAppId not ready.");
-      return;
-    }
-
-    const ordersColRef = getPublicOrdersCollectionRef();
-    if (!ordersColRef) {
-      setError("Firestore orders collection reference could not be established. Check Firebase DB connection or app ID.");
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
-    // Query for 'Paid' orders that are also 'quote-converted' or 'manual' and are standard products (have an SKU).
-    const q = query(
-      ordersColRef,
-      where('status', '==', 'Paid'),
-      where('lineItems.0.sku', '!=', '') // Assuming SKU presence means it's a standard product
-    );
+    // In a real app, you'd fetch from Firestore:
+    // const mrpColRef = collection(db, `artifacts/${firestoreAppId}/public/data/mrpPlans`);
+    // const q = query(mrpColRef);
+    // const unsubscribe = onSnapshot(q, (snapshot) => {
+    //   const fetchedPlans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    //   setProductionPlans(fetchedPlans);
+    //   setLoading(false);
+    //   setError(null);
+    // }, (err) => {
+    //   console.error("MRPPage: Error fetching MRP plans:", err);
+    //   setError(`Failed to load MRP plans: ${err.message}`);
+    //   setLoading(false);
+    // });
+    // return () => unsubscribe();
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const ordersList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).filter(order => order.lineItems && order.lineItems[0] && order.lineItems[0].sku); // Filter client-side just in case
-      setPaidStandardOrders(ordersList);
+    setTimeout(() => {
+      setProductionPlans([
+        { id: 'plan1', orderId: 'SO-001', product: '100x80 Canvas', status: 'Pending Materials', dueDate: '2025-07-20', quantity: 5 },
+        { id: 'plan2', orderId: 'SO-002', product: '60cm Round Panel', status: 'In Progress', dueDate: '2025-07-25', quantity: 2 },
+        { id: 'plan3', orderId: 'SO-003', product: 'Tray Frame 50x50', status: 'Ready for Assembly', dueDate: '2025-07-18', quantity: 3 },
+        { id: 'plan4', orderId: 'SO-004', product: '200x150 Canvas', status: 'Awaiting Fabric', dueDate: '2025-08-01', quantity: 1 },
+      ]);
       setLoading(false);
       setError(null);
-      console.log("MRP: Paid Standard Orders fetched successfully:", ordersList);
-    }, (err) => {
-      console.error("Error fetching paid standard orders for MRP:", err);
-      setError(`Failed to load paid orders: ${err.message}. Ensure Firestore security rules allow read access to /artifacts/{your_app_id}/public/data/orders.`);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    }, 1000); // Simulate loading
   }, [db, firestoreAppId]);
 
-  const handleRunMRP = () => {
-    // This is a placeholder for the MRP calculation logic.
-    // In Phase 3, this will process paidStandardOrders to generate
-    // material requirements and production lists.
-    console.log("Running MRP for:", paidStandardOrders);
-    alert("MRP calculation triggered! (Functionality to be implemented in Phase 3)"); // Use a custom modal in final app
-  };
 
   return (
-    // Main container for MRP Page content.
-    <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl w-full flex flex-col min-w-0">
-      {/* Page Title - following blueprint: text-blue-400, font-extrabold */}
-      <h1 className="text-4xl font-extrabold text-blue-400 mb-8">MRP System</h1>
-      <p className="text-gray-300 mb-6">
-        This system processes "Paid" orders for standard products to determine raw material requirements and generate production schedules.
-        Bespoke services will not be included in these automated calculations.
-      </p>
+    // Removed `min-h-screen`, `flex`, `items-center`, `justify-center`.
+    // The dashboard's main content area will now correctly manage this page's layout.
+    // `w-full h-full p-4 bg-darkGray rounded-xl shadow-md text-offWhite flex flex-col` remains.
+      // Main container for Material Management page content.
+        // This div uses w-full and min-w-0 to correctly fill the parent dashboard's content area.
+        <div className="w-full h-full flex flex-col min-w-0 text-offWhite">
+          <h1 className="text-4xl font-extrabold text-blue-400 mb-8" style={{ color: colors.blue[400] }}>Materials Management</h1>
+          <p className="text-gray-300 mb-6">Manage your raw material inventory. Add, edit, and delete materials. These materials will be accessible to the Instant Quote App.</p>
+    
+          {error && (
+            <div className="bg-red-700 text-white p-4 rounded-md mb-4">
+              <p>Error: {error}</p>
+            </div>
+          )}
+      <h2 className="text-2xl font-bold mb-6 text-center">MRP & Production Planning</h2>
 
-      {/* Card for triggering MRP and displaying status */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">MRP Run & Overview</h2>
-        {loading && <p className="text-gray-400">Loading relevant orders...</p>}
-        {error && <p className="text-red-400">{error}</p>}
+      {loading && <p className="text-lightGreen text-center">Loading MRP data...</p>}
+      {error && <p className="text-red-400 text-center">Error: {error}</p>}
 
-        {!loading && !error && (
-          <>
-            <p className="text-gray-300 mb-4">
-              Found {paidStandardOrders.length} "Paid" standard product orders ready for MRP processing.
-            </p>
-            <button
-              onClick={handleRunMRP}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
-            >
-              Run MRP Calculation
+      {!loading && !error && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-grow overflow-y-auto">
+          {/* Production Overview Card */}
+          <div className="bg-mediumGreen p-6 rounded-lg shadow-lg flex flex-col justify-between">
+            <div>
+              <h3 className="text-xl font-semibold mb-3" style={{ color: colors.accentGold }}>Production Schedule Summary</h3>
+              <p className="text-lg">Total Active Plans: <span className="font-bold">{productionPlans.length}</span></p>
+              <p className="text-lg mt-1">Orders Due This Week: <span className="font-bold">{productionPlans.filter(p => new Date(p.dueDate) <= new Date(new Date().setDate(new Date().getDate() + 7))).length}</span></p>
+              <p className="text-sm text-gray-300 mt-3">Monitor upcoming deadlines and plan resource allocation.</p>
+            </div>
+            <button className="mt-6 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors self-start">
+              View Schedule
             </button>
-            <p className="text-gray-400 mt-4 text-sm">
-              *Full MRP calculation and detailed output lists will be implemented in Phase 3.
-            </p>
-          </>
-        )}
-      </div>
-
-      {/* Card for listing relevant "Paid" Standard Product Orders */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">Relevant Paid Orders (for MRP)</h2>
-        {loading && <p className="text-gray-400">Loading orders...</p>}
-        {error && <p className="text-red-400">{error}</p>}
-        {!loading && !error && paidStandardOrders.length === 0 && (
-          <p className="text-gray-300">No "Paid" standard product orders found to display for MRP.</p>
-        )}
-        {!loading && !error && paidStandardOrders.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border border-gray-700 min-w-0">
-            <table className="table-fixed w-full divide-y divide-gray-700"> {/* Added table-fixed and w-full */}
-              <thead>
-                <tr>
-                  {/* Apply widths to columns. Adjust these as needed for your data. */}
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 rounded-tl-xl whitespace-nowrap w-[100px]">Order ID</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[150px]">Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[150px]">Product SKU</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[70px]">Quantity</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 rounded-tr-xl whitespace-nowrap w-[80px]">Status</th>
-                </tr>
-              </thead>
-              <tbody className="bg-mediumGreen divide-y divide-gray-700">
-                {paidStandardOrders.map(order => (
-                  <tr key={order.id} className="hover:bg-lightGreen transition-colors duration-150">
-                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-white">{order.orderId || order.id}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{order.customerInfo?.name || 'N/A'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{order.lineItems?.[0]?.sku || 'N/A'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{order.lineItems?.[0]?.quantity || 1}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-right text-sm text-gray-300">{order.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
-        )}
-      </div>
 
-      {/* Placeholder Card for MRP Output (Production Lists, Material Requisitions) */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 w-full min-w-0">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">MRP Output: Production & Material Lists</h2>
-        <p className="text-gray-300">
-          This section will display batched production lists (e.g., Profile Cutting Schedule, Fabric Cutting List)
-          and aggregated material requisitions based on the MRP calculation.
-        </p>
-        <div className="mt-4 p-4 bg-darkGray rounded-xl border border-gray-700 text-gray-400 text-sm italic">
-          Example:
-          <p className="mt-2">- Profile Cutting Schedule: Aggregated dimensions for all "CAN" orders.</p>
-          <p>- Fabric Cutting List: Total fabric requirements for "PAN" orders.</p>
-          <p>- Material Requisition: Consolidated list of all raw materials needed across all relevant orders.</p>
+          {/* Material Requirements Planning (MRP) Card */}
+          <div className="bg-mediumGreen p-6 rounded-lg shadow-lg flex flex-col justify-between">
+            <div>
+              <h3 className="text-xl font-semibold mb-3" style={{ color: colors.accentGold }}>Material Requirements</h3>
+              <ul className="list-disc list-inside text-gray-300 space-y-2">
+                <li>Canvas 12oz: <span className="font-bold text-red-400">Need 100sqm</span></li>
+                <li>Pine Stretcher Bar: <span className="font-bold text-orange-400">Low, check stock</span></li>
+                <li>(Detailed list of materials needed for current plans)</li>
+              </ul>
+              <p className="text-sm text-gray-300 mt-3">Identify material shortages and generate purchase orders.</p>
+            </div>
+            <button className="mt-6 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors self-start">
+              Generate POs
+            </button>
+          </div>
+
+          {/* Capacity Planning (Placeholder Card) */}
+          <div className="bg-mediumGreen p-6 rounded-lg shadow-lg flex flex-col justify-between">
+            <div>
+              <h3 className="text-xl font-semibold mb-3" style={{ color: colors.accentGold }}>Capacity Planning</h3>
+              <p className="text-lg">Next 7 Days: <span className="font-bold">85% Utilized</span></p>
+              <p className="text-lg mt-1">Overdue Tasks: <span className="font-bold text-red-400">2</span></p>
+              <p className="text-sm text-gray-300 mt-3">Assess workload and allocate tasks to production stations.</p>
+            </div>
+            <button className="mt-6 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors self-start">
+              Adjust Workload
+            </button>
+          </div>
+
+          {/* Detailed Production Plans Table (Placeholder) */}
+          <div className="md:col-span-full bg-mediumGreen p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-semibold mb-4" style={{ color: colors.accentGold }}>Detailed Production Plans (Table Placeholder)</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left table-auto">
+                <thead>
+                  <tr className="bg-darkGray text-offWhite text-sm uppercase tracking-wider">
+                    <th className="p-3 rounded-tl-lg">Order ID</th>
+                    <th className="p-3">Product</th>
+                    <th className="p-3">Quantity</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 rounded-tr-lg">Due Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productionPlans.map((plan, index) => (
+                    <tr key={plan.id} className={`${index % 2 === 0 ? 'bg-mediumGreen' : 'bg-darkGray'} border-b border-gray-600`}>
+                      <td className="p-3">{plan.orderId}</td>
+                      <td className="p-3">{plan.product}</td>
+                      <td className="p-3">{plan.quantity}</td>
+                      <td className="p-3">{plan.status}</td>
+                      <td className="p-3">{plan.dueDate}</td>
+                    </tr>
+                  ))}
+                  {productionPlans.length === 0 && (
+                     <tr>
+                       <td colSpan="5" className="p-3 text-center text-gray-400">No production plans to display.</td>
+                     </tr>
+                   )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {productionPlans.length === 0 && !loading && !error && (
+        <p className="text-gray-400 text-center mt-8">No production plans found. Add plans to get started.</p>
+      )}
     </div>
   );
 }

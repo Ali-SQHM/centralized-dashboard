@@ -180,6 +180,8 @@ function MaterialManagementPage({ db, firestoreAppId }) {
       console.error("Firebase not initialized or firestoreAppId missing.");
       return;
     }
+    // Using a custom modal/dialog is preferred over window.confirm for iframes
+    // For now, retaining window.confirm as it was in your original code.
     const confirmDelete = window.confirm("Are you sure you want to delete this material?");
     if (!confirmDelete) {
       return;
@@ -259,7 +261,12 @@ function MaterialManagementPage({ db, firestoreAppId }) {
               supplier: record.supplier || '',
               lastUpdated: new Date().toISOString()
             };
-            batch.set(doc(materialsColRef), materialToSave);
+            // Set (upsert) instead of add to prevent duplicate codes if CSV re-uploaded with same codes
+            // Using doc(materialsColRef, record.code) for specific document ID if 'code' is unique and suitable as ID
+            // Or use addDoc if you always want new documents (less suitable for updates)
+            // For now, using set with specific ID based on code as it's common for materials management.
+            // If codes aren't unique, you might need to query first and update or use addDoc.
+            batch.set(doc(materialsColRef, record.code), materialToSave);
             recordsAdded++;
           } else {
             console.warn(`Skipping invalid record at row ${index + 1} due to missing data:`, record);
@@ -268,12 +275,12 @@ function MaterialManagementPage({ db, firestoreAppId }) {
         });
 
         if (recordsAdded > 0) {
-            await batch.commit();
-            setCsvMessage(`Successfully added ${recordsAdded} materials from CSV. ${recordsFailed > 0 ? `(${recordsFailed} records skipped due to missing data)` : ''}`);
-            setCsvMessageType('success');
+          await batch.commit();
+          setCsvMessage(`Successfully added/updated ${recordsAdded} materials from CSV. ${recordsFailed > 0 ? `(${recordsFailed} records skipped due to missing data)` : ''}`);
+          setCsvMessageType('success');
         } else {
-            setCsvMessage(`No valid materials found in CSV to add. ${recordsFailed > 0 ? `(${recordsFailed} records skipped due to missing data)` : ''}`);
-            setCsvMessageType('error');
+          setCsvMessage(`No valid materials found in CSV to add/update. ${recordsFailed > 0 ? `(${recordsFailed} records skipped due to missing data)` : ''}`);
+          setCsvMessageType('error');
         }
       } catch (err) {
         console.error("Error processing CSV:", err);
@@ -308,224 +315,115 @@ function MaterialManagementPage({ db, firestoreAppId }) {
 
   const filteredMaterialsTable = materials.filter(material => {
     const matchesSearchTerm = searchTerm === '' ||
-      material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      material.description.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesMaterialType = filterMaterialType === '' ||
-      material.materialType === filterMaterialType;
-
+                              material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              material.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesMaterialType = filterMaterialType === '' || material.materialType === filterMaterialType;
     return matchesSearchTerm && matchesMaterialType;
   });
 
+  // Calculate overall stock levels for the chart
+  const stockLevels = materials.map(m => ({
+    name: m.description,
+    value: m.currentStockPUOM || 0,
+    min: m.minStockPUOM || 0
+  }));
 
   return (
     // Main container for Material Management page content.
-    <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl w-full flex flex-col min-w-0">
-      <h1 className="text-4xl font-extrabold text-blue-400 mb-8">Materials Management</h1>
+    // This div uses w-full and min-w-0 to correctly fill the parent dashboard's content area.
+    <div className="w-full h-full flex flex-col min-w-0 text-offWhite">
+      <h1 className="text-4xl font-extrabold text-blue-400 mb-8" style={{ color: colors.blue[400] }}>Materials Management</h1>
       <p className="text-gray-300 mb-6">Manage your raw material inventory. Add, edit, and delete materials. These materials will be accessible to the Instant Quote App.</p>
 
-      {/* 1. Stock Levels Overview Chart Card */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">Stock Levels Overview</h2>
-        <StockLevelChart materials={materials} />
-      </div>
-
-      {/* 2. Filter and Search Bar Card */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0 flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 min-w-0">
-          <label htmlFor="search" className="block text-offWhite text-sm font-bold mb-1">Search by Code or Description</label>
-          <input
-            type="text"
-            id="search"
-            name="search"
-            placeholder="e.g., WOOD-001, Oak Timber"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400"
-          />
+      {error && (
+        <div className="bg-red-700 text-white p-4 rounded-md mb-4">
+          <p>Error: {error}</p>
         </div>
-        <div className="flex-1 min-w-0">
-          <label htmlFor="filterMaterialType" className="block text-offWhite text-sm font-bold mb-1">Filter by Material Type</label>
-          <select
-            id="filterMaterialType"
-            name="filterMaterialType"
-            value={filterMaterialType}
-            onChange={(e) => setFilterMaterialType(e.target.value)}
-            className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200"
-          >
-            <option value="" className="bg-white text-deepGray">All Types</option>
-            {materialTypes.map(type => (
-              <option key={type} value={type} className="bg-white text-deepGray">{type}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      )}
 
-      {/* 3. Materials List/Table Card */}
-      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
-        <h2 className="text-2xl font-bold text-offWhite mb-4">Current Materials</h2>
-        {loading && <p className="text-gray-400">Loading materials...</p>}
-        {error && <p className="text-red-400">{error}</p>}
-
-        {/* Table container: overflow-x-auto to ensure horizontal scroll on small screens. Needs min-w-0. */}
-        <div className="overflow-x-auto rounded-xl border border-gray-700 min-w-0">
-          <table className="table-fixed w-full divide-y divide-gray-700"> {/* Added table-fixed and w-full */}
-            <thead>
-              <tr>
-                {/* Apply widths to columns. Adjust these as needed for your data. */}
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 rounded-tl-xl whitespace-nowrap w-[80px]">Code</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[150px]">Description</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[120px]">Material Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[60px]">PUOM</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[70px]">PCP</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[60px]">MUOM</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[100px]">Unit Conv Factor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[80px]">Overhead Factor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[90px]">Current Stock (PUOM)</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[90px]">Current Stock (MUOM)</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[90px]">Min Stock (PUOM)</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[90px]">Min Stock (MUOM)</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[70px]">MCP</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 whitespace-nowrap w-[90px]">Supplier</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider bg-gray-700 text-gray-300 rounded-tr-xl whitespace-nowrap w-[120px]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-mediumGreen divide-y divide-gray-700">
-              {!loading && filteredMaterialsTable.length === 0 && !error && (
-                <tr>
-                  <td colSpan="15" className="px-4 py-4 text-center text-offWhite/70">
-                    No materials added yet. Use the form below or upload a CSV to add your first material!
-                  </td>
-                </tr>
-              )}
-              {filteredMaterialsTable.map(material => ( // Looping through filtered materials to display
-                <tr key={material.id} className="hover:bg-lightGreen transition-colors duration-150">
-                  <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-white">{material.code}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.description}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.materialType}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.puom}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">£{material.pcp?.toFixed(4)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.muom}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{typeof material.unitConversionFactor === 'number' ? material.unitConversionFactor.toFixed(6) : material.unitConversionFactor}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{typeof material.overheadFactor === 'number' ? material.overheadFactor.toFixed(2) : material.overheadFactor}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.currentStockPUOM}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.currentStockMUOM?.toFixed(2)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.minStockPUOM}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.minStockMUOM?.toFixed(2)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">£{typeof material.mcp === 'number' ? material.mcp.toFixed(6) : material.mcp}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">{material.supplier}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleEdit(material)}
-                      className="text-blue-400 hover:text-blue-300 mr-3 transition-colors duration-200"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(material.id)}
-                      className="text-red-400 hover:text-red-500 transition-colors duration-200"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 4. Material Entry/Edit Form Card */}
+      {/* 1. Add/Edit Material Form Card */}
       <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
         <h2 className="text-2xl font-bold text-offWhite mb-4">{editingMaterialId ? 'Edit Material' : 'Add New Material'}</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="code" className="block text-offWhite text-sm font-bold mb-1">Code</label>
+            <label htmlFor="code" className="block text-sm font-semibold mb-1">Code</label>
             <input type="text" id="code" name="code" value={formData.code} onChange={handleInputChange} required
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
           <div>
-            <label htmlFor="description" className="block text-offWhite text-sm font-bold mb-1">Description</label>
+            <label htmlFor="description" className="block text-sm font-semibold mb-1">Description</label>
             <input type="text" id="description" name="description" value={formData.description} onChange={handleInputChange} required
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
           <div>
-            <label htmlFor="materialType" className="block text-offWhite text-sm font-bold mb-1">Material Type</label>
+            <label htmlFor="materialType" className="block text-sm font-semibold mb-1">Material Type</label>
             <select id="materialType" name="materialType" value={formData.materialType} onChange={handleInputChange} required
-                    className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200">
-              {materialTypes.map(type => (
-                <option key={type} value={type} className="bg-white text-deepGray">{type}</option>
-              ))}
+                    className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen">
+              <option value="">Select Type</option>
+              {materialTypes.map(type => type && <option key={type} value={type}>{type}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="puom" className="block text-offWhite text-sm font-bold mb-1">Purchase Unit of Measure (PUOM)</label>
+            <label htmlFor="puom" className="block text-sm font-semibold mb-1">Purchase Unit of Measure (PUOM)</label>
             <select id="puom" name="puom" value={formData.puom} onChange={handleInputChange} required
-                    className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200">
-              {commonUnits.map(unit => (
-                <option key={unit} value={unit} className="bg-white text-deepGray">{unit}</option>
-              ))}
+                    className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen">
+              <option value="">Select PUOM</option>
+              {commonUnits.map(unit => unit && <option key={unit} value={unit}>{unit}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="pcp" className="block text-offWhite text-sm font-bold mb-1">Purchase Cost Price (PCP)</label>
-            <input type="number" step="0.0001" id="pcp" name="pcp" value={formData.pcp} onChange={handleInputChange} required
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+            <label htmlFor="pcp" className="block text-sm font-semibold mb-1">Purchase Cost per PUOM (PCP)</label>
+            <input type="number" step="0.01" id="pcp" name="pcp" value={formData.pcp} onChange={handleInputChange} required
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
           <div>
-            <label htmlFor="muom" className="block text-offWhite text-sm font-bold mb-1">Manufacturing Unit of Measure (MUOM)</label>
+            <label htmlFor="muom" className="block text-sm font-semibold mb-1">Manufacturing Unit of Measure (MUOM)</label>
             <select id="muom" name="muom" value={formData.muom} onChange={handleInputChange} required
-                    className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200">
-              {commonUnits.map(unit => (
-                <option key={unit} value={unit} className="bg-white text-deepGray">{unit}</option>
-              ))}
+                    className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen">
+              <option value="">Select MUOM</option>
+              {commonUnits.map(unit => unit && <option key={unit} value={unit}>{unit}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="unitConversionFactor" className="block text-offWhite text-sm font-bold mb-1">Unit Conversion Factor (PUOM to MUOM)</label>
-            <input type="number" step="0.000000001" id="unitConversionFactor" name="unitConversionFactor" value={formData.unitConversionFactor} onChange={handleInputChange} required
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+            <label htmlFor="unitConversionFactor" className="block text-sm font-semibold mb-1">Unit Conversion Factor (PUOM to MUOM)</label>
+            <input type="number" step="0.01" id="unitConversionFactor" name="unitConversionFactor" value={formData.unitConversionFactor} onChange={handleInputChange} required
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
           <div>
-            <label htmlFor="overheadFactor" className="block text-offWhite text-sm font-bold mb-1">Overhead Factor (e.g., 1.25 for 25% overhead)</label>
+            <label htmlFor="overheadFactor" className="block text-sm font-semibold mb-1">Overhead Factor</label>
             <input type="number" step="0.01" id="overheadFactor" name="overheadFactor" value={formData.overheadFactor} onChange={handleInputChange} required
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
           <div>
-            <label htmlFor="currentStockPUOM" className="block text-offWhite text-sm font-bold mb-1">Current Stock (in PUOM)</label>
-            <input type="number" step="0.01" id="currentStockPUOM" name="currentStockPUOM" value={formData.currentStockPUOM} onChange={handleInputChange} required
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+            <label htmlFor="currentStockPUOM" className="block text-sm font-semibold mb-1">Current Stock (PUOM)</label>
+            <input type="number" step="0.01" id="currentStockPUOM" name="currentStockPUOM" value={formData.currentStockPUOM} onChange={handleInputChange}
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
           <div>
-            <label htmlFor="minStockPUOM" className="block text-offWhite text-sm font-bold mb-1">Minimum Stock (in PUOM)</label>
-            <input type="number" step="0.01" id="minStockPUOM" name="minStockPUOM" value={formData.minStockPUOM} onChange={handleInputChange} required
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+            <label htmlFor="minStockPUOM" className="block text-sm font-semibold mb-1">Min Stock (PUOM)</label>
+            <input type="number" step="0.01" id="minStockPUOM" name="minStockPUOM" value={formData.minStockPUOM} onChange={handleInputChange}
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
-          <div>
-            <label htmlFor="supplier" className="block text-offWhite text-sm font-bold mb-1">Supplier</label>
+          <div className="md:col-span-2">
+            <label htmlFor="supplier" className="block text-sm font-semibold mb-1">Supplier</label>
             <input type="text" id="supplier" name="supplier" value={formData.supplier} onChange={handleInputChange}
-                   className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200 placeholder-gray-400" />
+                   className="w-full p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen" />
           </div>
-          <div className="md:col-span-2 flex justify-end space-x-4 mt-4">
+          <div className="md:col-span-2 flex justify-end space-x-3 mt-4">
             {editingMaterialId && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingMaterialId(null);
-                  setFormData({
-                    code: '', description: '', materialType: '', puom: '', pcp: '', muom: '', unitConversionFactor: '', overheadFactor: '',
-                    currentStockPUOM: '', minStockPUOM: '', supplier: '',
-                  });
-                }}
-                className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-xl focus:outline-none focus:shadow-outline transition-colors duration-200 focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75"
-              >
+              <button type="button" onClick={() => {
+                setEditingMaterialId(null);
+                setFormData({
+                  code: '', description: '', materialType: '', puom: '', pcp: '', muom: '',
+                  unitConversionFactor: '', overheadFactor: '', currentStockPUOM: '', minStockPUOM: '', supplier: '',
+                });
+              }}
+                      className="px-6 py-3 rounded-xl font-semibold transition-colors duration-200 bg-gray-600 text-offWhite hover:bg-gray-700">
                 Cancel Edit
               </button>
             )}
-            <button
-              type="submit"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl focus:outline-none focus:shadow-outline transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
-            >
+            <button type="submit"
+                    className="px-6 py-3 rounded-xl font-semibold transition-colors duration-200 bg-blue-600 text-white hover:bg-blue-700">
               {editingMaterialId ? 'Update Material' : 'Add Material'}
             </button>
           </div>
@@ -548,10 +446,95 @@ function MaterialManagementPage({ db, firestoreAppId }) {
           />
         </div>
         {csvMessage && (
-          <p className={`mt-4 text-sm font-semibold ${csvMessageType === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+          <p className={`mt-3 text-sm font-semibold text-center ${csvMessageType === 'error' ? 'text-red-400' : 'text-lightGreen'}`}>
             {csvMessage}
           </p>
         )}
+      </div>
+
+      {/* Stock Levels Overview Chart Card */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 mb-8 w-full min-w-0">
+        <h2 className="text-2xl font-bold text-offWhite mb-4">Stock Levels Overview</h2>
+        {materials.length > 0 ? (
+          <StockLevelChart materials={stockLevels} />
+        ) : (
+          <p className="text-gray-400 text-center">No materials to display in chart.</p>
+        )}
+      </div>
+
+      {/* Materials Table Card */}
+      <div className="bg-mediumGreen p-6 rounded-xl shadow-lg border border-gray-700 w-full min-w-0 flex flex-col">
+        <h2 className="text-2xl font-bold text-offWhite mb-4">All Materials</h2>
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+          <input
+            type="text"
+            placeholder="Search by code or description..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full sm:w-1/2 p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen"
+          />
+          <select
+            value={filterMaterialType}
+            onChange={(e) => setFilterMaterialType(e.target.value)}
+            className="w-full sm:w-1/2 p-2 rounded-md bg-white text-deepGray border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lightGreen"
+          >
+            <option value="">All Material Types</option>
+            {materialTypes.map(type => type && <option key={type} value={type}>{type}</option>)}
+          </select>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-gray-700 shadow-md">
+          <table className="min-w-full divide-y divide-gray-700 table-fixed"> {/* Added table-fixed */}
+            <thead className="bg-darkGray">
+              <tr>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[80px]">Code</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-2/12 min-w-[150px]">Description</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[100px]">Type</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[80px]">PUOM</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[80px]">PCP</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[80px]">MUOM</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[120px]">Conv. Factor</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[100px]">Overhead</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[120px]">Stock (PUOM)</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[120px]">Min Stock (PUOM)</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[120px]">Stock (MUOM)</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[120px]">Min Stock (MUOM)</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[100px]">MCP</th> {/* Added width */}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-1/12 min-w-[100px]">Supplier</th> {/* Added width */}
+                <th scope="col" className="relative px-6 py-3 w-1/12 min-w-[120px]"><span className="sr-only">Edit</span></th> {/* Added width */}
+              </tr>
+            </thead>
+            <tbody className="bg-mediumGreen divide-y divide-gray-600">
+              {filteredMaterialsTable.map((material) => (
+                <tr key={material.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-offWhite">{material.code}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.description}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.materialType}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.puom}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">£{material.pcp?.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.muom}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.unitConversionFactor?.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.overheadFactor?.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.currentStockPUOM?.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.minStockPUOM?.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.currentStockMUOM?.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.minStockMUOM?.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">£{material.mcp?.toFixed(4)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{material.supplier}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => handleEdit(material)} className="text-blue-400 hover:text-blue-600 mr-3">Edit</button>
+                    <button onClick={() => handleDelete(material.id)} className="text-red-400 hover:text-red-600">Delete</button>
+                  </td>
+                </tr>
+              ))}
+              {filteredMaterialsTable.length === 0 && (
+                <tr>
+                  <td colSpan="15" className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 text-center">No materials found matching your criteria.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

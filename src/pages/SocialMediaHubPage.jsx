@@ -89,7 +89,7 @@ const SocialMediaHubPage = ({ db, firestoreAppId }) => {
 
 
   return (
-    <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl">
+    <div className="w-full h-full flex flex-col min-w-0 text-offWhite">
       <h2 className="text-3xl font-bold text-teal-400 mb-6">Social Media Hub</h2>
       <p className="text-gray-300 mb-8">Manage your social media presence, generate content ideas, and analyze performance.</p>
 

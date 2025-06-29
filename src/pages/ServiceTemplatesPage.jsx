@@ -6,7 +6,7 @@ import React from 'react';
 
 const ServiceTemplatesPage = ({ db, firestoreAppId }) => {
   return (
-    <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl">
+    <div className="w-full h-full flex flex-col min-w-0 text-offWhite">
       <h2 className="text-3xl font-bold text-green-400 mb-6">Service Templates</h2>
       <p className="text-gray-300 mb-8">Create and manage reusable templates for your common services and quotes to streamline operations.</p>
       <div className="mt-8 p-6 bg-darkGray rounded-xl shadow-lg border border-gray-700">

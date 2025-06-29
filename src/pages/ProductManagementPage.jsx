@@ -6,7 +6,7 @@ import React from 'react';
 
 const ProductManagementPage = ({ db, firestoreAppId }) => {
   return (
-    <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl">
+    <div className="w-full h-full flex flex-col min-w-0 text-offWhite">
       <h2 className="text-3xl font-bold text-orange-400 mb-6">Product Management</h2>
       <p className="text-gray-300 mb-8">This page will allow you to manage your product catalog, specifications, and versions.</p>
       <div className="mt-8 p-6 bg-darkGray rounded-xl shadow-lg border border-gray-700">

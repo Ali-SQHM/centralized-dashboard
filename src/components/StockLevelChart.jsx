@@ -2,8 +2,8 @@
 // Displays a bar chart of material stock levels, filterable by material type.
 //
 // Updates:
-// 1. Re-confirmed that the inner chart bars container (the div with `overflow-x-auto`)
-//    has `min-w-0`. This allows it to shrink and ensures the overflow-x-auto is active.
+// 1. Structure remains unchanged from previous confirmed version.
+//    The crucial `min-w-0` and `overflow-x-auto` are on the inner chart container.
 // 2. Individual bars retain `min-width: 60px` and `flex-shrink-0` to force content overflow.
 // 3. All styling (colors, rounding, inputs, etc.) and other fixes remain.
 
@@ -94,7 +94,7 @@ function StockLevelChart({ materials }) { // 'materials' prop received from Mate
                     {material.currentStockPUOM}
                   </span>
                 </div>
-                <span className="text-xs mt-1 text-offWhite text-center w-full truncate">{material.code}</span>
+                <span className="text-xs mt-1 text-offWhite text-center w-full truncate">F-CODE: {material.code}</span>
               </div>
             );
           })}

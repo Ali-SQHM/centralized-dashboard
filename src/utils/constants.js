@@ -9,6 +9,15 @@ export const colors = {
   offWhite: '#F3F4F6', // Off-white for main content background or contrasting text
   darkGray: '#1F2937', // A dark gray for text or secondary elements on light backgrounds
   deepGray: '#111827', // A near-black for darkest elements or background accents
+
+  // Added blue and red color scales to match indexing used in components
+  blue: {
+    400: '#60A5FA', // A medium blue shade (similar to Tailwind blue-400)
+    600: '#2563EB', // A darker blue shade (similar to Tailwind blue-600)
+  },
+  red: {
+    400: '#EF4444', // A medium red shade (similar to Tailwind red-400)
+  }
 };
 
 export const commonUnits = [

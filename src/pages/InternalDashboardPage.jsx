@@ -1,240 +1,357 @@
 // src/pages/InternalDashboardPage.jsx
-// This component renders the main internal dashboard for authorized staff users.
-// It includes a responsive sidebar for navigation and dynamically renders different
-// content pages or external links.
+// This component acts as the main layout for the internal ERP/MRP dashboard.
+// It includes the sidebar navigation and dynamically renders content based on the selected page.
+// It consumes Firebase instances and user status passed as props from App.jsx.
 //
 // Updates:
-// 1. CRITICAL RESPONSIVENESS FIX: Added 'min-w-0' to the <main> tag to ensure it
-//    can correctly shrink in flex context and allow its children to manage overflow.
-// 2. All styling (colors, rounded-xl, react-icons) remains as previously confirmed.
+// 1. **FINAL MAIN PAGE HEADER (H2) PADDING FIX:**
+//    - Removed all padding from the `<header>` element.
+//    - Added `mb-6` to the `<header>` element for consistent bottom margin.
+//    - Applied `pl-4 md:pl-6` (padding-left) to the `h2` element itself to push it from the left edge.
+// 2. Final & Robust Layout Solution for Desktop Excessive Spacing (from previous fix) is retained.
+// 3. Mobile hamburger overlap fix and overlay functionality retained.
+// 4. Corrected import path for `AICreativeStudioPage`.
+// 5. Sidebar layout refinements (scrollability, title centering) are retained.
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
-// Import Font Awesome 6 icons from react-icons
-import { FaBars, FaXmark, FaArrowUpRightFromSquare } from 'react-icons/fa6'; // Added FaArrowUpRightFromSquare
+// All icon imports confirmed for react-icons/fa6
+import {
+  FaCube, FaChartBar, FaClipboardList, FaRightFromBracket, FaGear,
+  FaQuoteLeft, FaHandshake, FaBoxesPacking, FaSwatchbook, FaShareNodes,
+  FaFileInvoiceDollar,
+  FaBars // Hamburger icon
+} from 'react-icons/fa6';
 
-// Import all content pages
+// Import all application pages
 import MaterialManagementPage from './MaterialManagementPage';
 import MRPPage from './MRPPage';
-import SocialMediaHubPage from './SocialMediaHubPage';
-import ProductManagementPage from './ProductManagementPage';
-import KanbanBoardPage from './KanbanBoardPage';
-import ServiceTemplatesPage from './ServiceTemplatesPage';
-import InstantQuoteAppPage from './InstantQuoteAppPage'; // Correct import for your existing page
-import DashboardHome from '../components/DashboardHome';
+import SalesOrdersPage from './SalesOrdersPage';
+import SettingsPage from './SettingsPage';
+import InstantQuoteAppPage from './InstantQuoteAppPage'; // Consolidated quote page
+import KanbanBoardPage from './KanbanBoardPage'; // Kanban board
 
+// New placeholder pages
+import CashflowCostTrackerPage from './CashflowCostTrackerPage';
+import AICreativeStudioPage from './AICreativeStudioPage'; // Corrected import path
+import MarketingKanbanPage from './MarketingKanbanPage';
+import MarketingAnalyticsPage from './MarketingAnalyticsPage';
+import ProductManagementPage from './ProductManagementPage';
+import ServiceTemplatesPage from './ServiceTemplatesPage';
+import SocialMediaHubPage from './SocialMediaHubPage';
+
+// Import color constants
 import { colors } from '../utils/constants';
 
-// Navigation sections for the sidebar
-const navSections = [
-  {
-    title: null,
-    items: [
-      { id: 'dashboard', name: 'Dashboard Home', type: 'internal' },
-    ]
-  },
-  {
-    title: 'Manufacturing Operations',
-    items: [
-      { id: 'materials', name: 'Material Management', type: 'internal' },
-      { id: 'mrp', name: 'MRP System', type: 'internal' },
-      { id: 'product-management', name: 'Product Management', type: 'internal-placeholder' },
-      { id: 'kanban-board', name: 'Kanban Board', type: 'internal-placeholder' },
-    ]
-  },
-  {
-    title: 'Sales & Service',
-    items: [
-      { id: 'instant-quote-app', name: 'Internal Quote App', type: 'internal' }, // <--- ID CHANGED TO MATCH YOUR PAGE
-      { id: 'service-templates', name: 'Service Templates', type: 'internal-placeholder' },
-    ]
-  },
-  {
-    title: 'Marketing & Communication',
-    items: [
-      { id: 'social', name: 'Social Media Hub', type: 'internal' },
-    ]
-  },
-  {
-    title: 'External Tools',
-    items: [
-      { id: 'gmail', name: 'Gmail', type: 'external', url: 'https://mail.google.com/' },
-      { id: 'wix-crm', name: 'Wix Dashboard (CRM)', type: 'external', url: 'https://www.wix.com/my-account/sites' },
-      { id: 'financial-tracker', name: 'Financial Tracker', type: 'external', url: 'https://www.example.com/financial-tracker' },
-      { id: 'adobe-express', name: 'Adobe Express (Social)', type: 'external', url: 'https://new.express.adobe.com/' },
-    ]
-  },
-  {
-    title: 'Admin & Settings',
-    items: [
-      { id: 'user-management', name: 'User Management', type: 'internal-placeholder' },
-    ]
-  }
-];
+function InternalDashboardPage({ db, auth, user, firestoreAppId }) {
+  const [currentUser, setCurrentUser] = useState(user);
+  const [currentPage, setCurrentPage] = useState('salesOrders');
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Default to open on larger screens
 
-const InternalDashboardPage = ({ db, auth, user, firestoreAppId, signOutUser }) => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  // Listen for auth state changes to keep currentUser updated
+  useEffect(() => {
+    if (auth) {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        setCurrentUser(user);
+        if (!user) {
+          console.log("InternalDashboardPage: User logged out, App.jsx will handle redirection.");
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [auth]);
 
+  // Effect to handle initial sidebar state on mount and resize
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 768 && isSidebarOpen) {
-        setIsSidebarOpen(false);
+      if (window.innerWidth < 768) { // Tailwind's 'md' breakpoint is 768px
+        setSidebarOpen(false);
+      } else {
+        setSidebarOpen(true);
       }
     };
+
     window.addEventListener('resize', handleResize);
+    handleResize();
+
     return () => window.removeEventListener('resize', handleResize);
-  }, [isSidebarOpen]);
+  }, []);
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
-
-  const handlePageChange = (item) => {
-    if (item.type === 'external') {
-      window.open(item.url, '_blank');
-    } else {
-      setCurrentPage(item.id);
-    }
-    if (window.innerWidth < 768) {
-      setIsSidebarOpen(false);
+  const handleLogout = async () => {
+    if (auth) {
+      try {
+        await signOut(auth);
+        console.log("InternalDashboardPage: User signed out successfully.");
+      } catch (error) {
+        console.error("InternalDashboardPage: Error signing out:", error);
+      }
     }
   };
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'dashboard':
-        return <DashboardHome user={user} />;
-      case 'materials':
+      case 'materialManagement':
         return <MaterialManagementPage db={db} firestoreAppId={firestoreAppId} />;
       case 'mrp':
         return <MRPPage db={db} firestoreAppId={firestoreAppId} />;
-      case 'social':
-        return <SocialMediaHubPage db={db} firestoreAppId={firestoreAppId} />;
-      case 'product-management':
-        return <ProductManagementPage db={db} firestoreAppId={firestoreAppId} />;
-      case 'kanban-board':
-        return <KanbanBoardPage db={db} firestoreAppId={firestoreAppId} />;
-      case 'service-templates':
-        return <ServiceTemplatesPage db={db} firestoreAppId={firestoreAppId} />;
-      case 'instant-quote-app': // CORRECTLY ROUTING TO YOUR EXISTING PAGE
-        return <InstantQuoteAppPage db={db} firestoreAppId={firestoreAppId} />;
-      case 'user-management':
+      case 'salesOrders':
+        return <SalesOrdersPage db={db} firestoreAppId={firestoreAppId} currentUser={currentUser} />;
+      case 'internalSalesQuote':
         return (
-          <div className="p-4 bg-deepGray text-offWhite min-h-full rounded-xl"> {/* Consistent outer container */}
-            <h2 className="text-3xl font-bold text-white mb-6">User Management</h2> {/* Consistent heading */}
-            <p className="text-gray-300">This is where you will manage staff accounts for dashboard access.</p>
-            <div className="mt-8 p-6 bg-darkGray rounded-xl shadow-lg border border-gray-700"> {/* Consistent card style */}
-              <h3 className="text-xl font-semibold text-white mb-4">Coming in Phase 2!</h3>
-              <p className="text-gray-300">You'll be able to add, remove, and view authorized staff members here.</p>
-            </div>
+          <InstantQuoteAppPage
+            db={db}
+            firestoreAppId={firestoreAppId}
+            auth={auth}
+            currentUser={currentUser}
+            isAuthorizedStaff={true}
+            navigateTo={() => setCurrentPage('internalSalesQuote')}
+          />
+        );
+      case 'customerWebQuotePreview':
+        return (
+          <InstantQuoteAppPage
+            db={db}
+            firestoreAppId={firestoreAppId}
+            auth={auth}
+            currentUser={currentUser}
+            isAuthorizedStaff={false}
+            navigateTo={() => setCurrentPage('customerWebQuotePreview')}
+          />
+        );
+      case 'productManagement':
+        return <ProductManagementPage db={db} firestoreAppId={firestoreAppId} />;
+      case 'serviceTemplates':
+        return <ServiceTemplatesPage db={db} firestoreAppId={firestoreAppId} />;
+      case 'cashflowCostTracker':
+        return <CashflowCostTrackerPage db={db} firestoreAppId={firestoreAppId} />;
+      case 'aiCreativeStudio':
+        return <AICreativeStudioPage db={db} firestoreAppId={firestoreAppId} />;
+      case 'marketingKanban':
+        return <MarketingKanbanPage db={db} firestoreAppId={firestoreAppId} />;
+      case 'marketingAnalytics':
+        return <MarketingAnalyticsPage db={db} firestoreAppId={firestoreAppId} />;
+      case 'socialMediaHub':
+        return <SocialMediaHubPage db={db} firestoreAppId={firestoreAppId} />;
+      case 'kanbanBoard':
+          return <KanbanBoardPage db={db} firestoreAppId={firestoreAppId} currentUser={currentUser} />;
+      case 'settings':
+        return <SettingsPage db={db} firestoreAppId={firestoreAppId} />;
+      default:
+        // Default page when no specific page is selected
+        return (
+          <div className="w-full h-full text-offWhite flex flex-col items-center justify-center p-4 md:p-6">
+            <h3 className="text-2xl font-bold mb-4">Welcome to Your Dashboard!</h3>
+            <p>Select a module from the sidebar to get started.</p>
           </div>
         );
-      default:
-        return <DashboardHome user={user} />;
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-deepGray text-offWhite"> {/* Main background color */}
-      {/* Sidebar - Desktop & Mobile */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-darkGray transform ${ // Sidebar background color
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0 transition-transform duration-300 ease-in-out md:relative md:flex-shrink-0 md:flex md:flex-col rounded-r-xl shadow-xl`}
+    <div className="flex min-h-screen bg-deepGray text-offWhite relative">
+      {/* Hamburger Icon for Mobile */}
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="md:hidden fixed top-4 left-4 z-50 p-3 rounded-full bg-darkGray text-offWhite shadow-lg"
       >
-        <div className="p-4 flex items-center justify-between border-b border-gray-700">
-          <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-white text-wrap leading-tight">
-            HM Manufacturing
+        <FaBars className="text-xl" />
+      </button>
+
+      {/* Sidebar Navigation */}
+      {/* Added overflow-y-auto here to ensure scrollability of sidebar content */}
+      <nav className={`fixed inset-y-0 left-0 w-64 bg-darkGray p-4 flex flex-col justify-between shadow-lg z-40
+                       transition-transform duration-300 ease-in-out overflow-y-auto
+                       ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+        {/* This div just manages flex distribution; its parent nav provides padding */}
+        <div className="flex-1">
+          {/* H1 title in sidebar - Reverted to text-center and original margins */}
+          <h1 className="text-3xl font-bold mb-8 text-blue-400 text-center" style={{ color: colors.blue[400] }}>HM ERP</h1>
+          <ul>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('salesOrders')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'salesOrders' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaClipboardList className="mr-3 text-xl" /> Sales Orders
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('materialManagement')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'materialManagement' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaCube className="mr-3 text-xl" /> Material Mgmt.
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('mrp')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'mrp' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaChartBar className="mr-3 text-xl" /> MRP & Planning
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('kanbanBoard')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'kanbanBoard' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaBoxesPacking className="mr-3 text-xl" /> Production Kanban
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('productManagement')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'productManagement' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaSwatchbook className="mr-3 text-xl" /> Product Mgmt.
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('serviceTemplates')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'serviceTemplates' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaHandshake className="mr-3 text-xl" /> Service Templates
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('cashflowCostTracker')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'cashflowCostTracker' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaFileInvoiceDollar className="mr-3 text-xl" /> Cashflow/Cost Tracker
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('aiCreativeStudio')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'aiCreativeStudio' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaCube className="mr-3 text-xl" /> AI Creative Studio
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('marketingKanban')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'marketingKanban' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaClipboardList className="mr-3 text-xl" /> Marketing Kanban
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('marketingAnalytics')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'marketingAnalytics' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaChartBar className="mr-3 text-xl" /> Marketing Analytics
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('socialMediaHub')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'socialMediaHub' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaShareNodes className="mr-3 text-xl" /> Social Media Hub
+              </button>
+            </li>
+            <li className="mb-2 border-t border-gray-700 pt-2 mt-2"> {/* Separator for Quote Tools */}
+              <button
+                onClick={() => setCurrentPage('internalSalesQuote')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'internalSalesQuote' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaFileInvoiceDollar className="mr-3 text-xl" /> Internal Sales Quote
+              </button>
+            </li>
+            <li className="mb-2">
+              <button
+                onClick={() => setCurrentPage('customerWebQuotePreview')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'customerWebQuotePreview' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+              >
+                <FaQuoteLeft className="mr-3 text-xl" /> Customer Web Quote Preview
+              </button>
+            </li>
+            <li className="mb-2">
+            <button
+                onClick={() => setCurrentPage('settings')}
+                className={`flex items-center w-full p-3 rounded-xl text-left font-semibold transition-colors duration-200
+                ${currentPage === 'settings' ? 'bg-lightGreen text-deepGray shadow-md' : 'text-offWhite hover:bg-lightGreen hover:text-deepGray'}`}
+            >
+              <FaGear className="mr-3 text-xl" /> Settings
+            </button>
+          </li>
+        </ul>
+        </div>
+
+        <div className="mt-8 pt-4 border-t border-gray-700">
+          <p className="text-gray-400 text-sm mb-2">Logged in as: <span className="font-semibold text-offWhite">{currentUser?.email || currentUser?.uid}</span></p>
+          <button
+            onClick={handleLogout}
+            className="flex items-center w-full p-3 rounded-xl text-left font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75"
+          >
+            <FaRightFromBracket className="mr-3 text-xl" /> Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Mobile Overlay when sidebar is open */}
+      {sidebarOpen && window.innerWidth < 768 && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black opacity-50 z-30 md:hidden"
+        ></div>
+      )}
+
+      {/* Main Content Area - This container manages the overall layout and push from sidebar */}
+      {/* Uses md:pl-64 to explicitly push content over for the fixed sidebar. */}
+      <div className={`flex-1 flex flex-col p-4 md:pl-64 md:pr-6 md:pt-6 md:pb-6 transition-all duration-300 ease-in-out
+                       ${window.innerWidth < 768 ? 'pt-16' : ''} z-10 min-w-0`}>
+        {/* Header for main content area - Removed internal padding. */}
+        <header className="mb-6"> {/* Removed px-4 md:px-6 pt-4 md:pt-6 from here */}
+          {/* H2 title for main page - Now has its own padding to push it from the left edge */}
+          <h2 className="text-3xl font-bold text-offWhite pl-4 md:pl-6"> {/* Added pl-4 md:pl-6 */}
+            {/* Dynamic Header Title */}
+            {currentPage === 'materialManagement' && 'Material Management'}
+            {currentPage === 'mrp' && 'MRP & Production Planning'}
+            {currentPage === 'salesOrders' && 'Sales Orders'}
+            {currentPage === 'internalSalesQuote' && 'Internal Sales Quote'}
+            {currentPage === 'customerWebQuotePreview' && 'Customer Web Quote Preview'}
+            {currentPage === 'productManagement' && 'Product Management'}
+            {currentPage === 'serviceTemplates' && 'Service Templates'}
+            {currentPage === 'cashflowCostTracker' && 'Cashflow & Cost Tracker'}
+            {currentPage === 'aiCreativeStudio' && 'AI Creative Studio'}
+            {currentPage === 'marketingKanban' && 'Marketing Kanban'}
+            {currentPage === 'marketingAnalytics' && 'Marketing Analytics'}
+            {currentPage === 'socialMediaHub' && 'Social Media Hub'}
+            {currentPage === 'kanbanBoard' && 'Production Kanban Board'}
+            {currentPage === 'settings' && 'Settings'}
+            {/* Default title if none match */}
+            {currentPage === 'salesOrders' && !currentPage && 'Dashboard'}
           </h2>
-          <button onClick={toggleSidebar} className="md:hidden text-offWhite hover:text-gray-300 focus:outline-none">
-            <FaXmark size={24} /> {/* Using FaXmark (Close Icon) from react-icons */}
-          </button>
-        </div>
-
-        <nav className="flex-1 p-4 overflow-y-auto">
-          {navSections.map((section, index) => (
-            <div key={index} className="mb-4 last:mb-0">
-              {section.title && (
-                <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mt-4 mb-2 px-2">
-                  {section.title}
-                </h3>
-              )}
-              <ul>
-                {section.items.map((item) => (
-                  <li key={item.id} className="mb-2">
-                    {item.type === 'external' ? (
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center w-full px-4 py-2 rounded-xl text-left transition duration-200 hover:bg-gray-700 text-gray-300 hover:text-white"
-                      >
-                        {item.name}
-                        {/* Replaced problematic inline SVG with React Icon */}
-                        <FaArrowUpRightFromSquare size={16} className="ml-2" /> 
-                      </a>
-                    ) : (
-                      <button
-                        onClick={() => handlePageChange(item)}
-                        className={`flex items-center w-full px-4 py-2 rounded-xl text-left transition duration-200 ${
-                          currentPage === item.id
-                            ? 'bg-blue-600 text-white shadow-lg'
-                            : 'hover:bg-gray-700 text-gray-300 hover:text-white'
-                        }`}
-                      >
-                        {item.name}
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </nav>
-
-        {/* User Info & Logout Button */}
-        <div className="p-4 border-t border-gray-700 flex flex-col items-center">
-          <p className="text-sm text-gray-400 mb-2 truncate max-w-full" title={user?.email}>
-            Logged in as: {user?.email}
-          </p>
-          <button
-            onClick={signOutUser}
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75"
-          >
-            Logout
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col p-4 md:p-8"> {/* Added flex flex-col here to manage its children */}
-        {/* Mobile Navbar with Hamburger Icon */}
-        <header className="md:hidden flex justify-between items-center bg-darkGray p-3 rounded-xl shadow-lg mb-4">
-          <button onClick={toggleSidebar} className="text-offWhite hover:text-gray-300 focus:outline-none">
-            <FaBars size={24} /> {/* Using FaBars (Menu Icon) from react-icons */}
-          </button>
-          <h1 className="text-xl font-bold text-offWhite text-center flex-grow mx-2 truncate">
-            HM Manufacturing
-          </h1>
-          <button
-            onClick={signOutUser}
-            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded-xl shadow-md transition duration-300 ease-in-out"
-          >
-            Logout
-          </button>
         </header>
 
-        {/* Dynamic Page Content */}
-        {/* CRITICAL FIX: Added min-w-0 to allow the content area to shrink */}
-        <main className="flex-1 rounded-xl p-4 md:p-6 shadow-inner bg-darkGray border border-gray-700 overflow-auto min-w-0">
+        {/* Dynamic content rendering container - This is where the individual page component lives */}
+        {/* It applies the common background, border, shadow, takes full width/height of its parent, AND internal padding. */}
+        <div className="rounded-xl shadow-md border border-gray-700 w-full bg-darkGray h-full p-4 md:p-6">
           {renderPage()}
-        </main>
+        </div>
       </div>
     </div>
   );
-};
+}
 
 export default InternalDashboardPage;
