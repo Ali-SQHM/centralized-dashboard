@@ -1,104 +1,120 @@
 // src/components/StockLevelChart.jsx
-// Displays a bar chart of material stock levels, filterable by material type.
-//
-// Updates:
-// 1. Structure remains unchanged from previous confirmed version.
-//    The crucial `min-w-0` and `overflow-x-auto` are on the inner chart container.
-// 2. Individual bars retain `min-width: 60px` and `flex-shrink-0` to force content overflow.
-// 3. All styling (colors, rounding, inputs, etc.) and other fixes remain.
+// This component visualizes material stock levels against their reorder points
+// using Recharts. It now includes refinements for rendering and visibility.
 
-import React, { useState } from 'react';
-import { colors, materialTypes } from '../utils/constants'; // Import constants
+import React, { useEffect } from 'react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell
+} from 'recharts';
+import { colors } from '../utils/constants'; // Import color constants
 
-function StockLevelChart({ materials }) { // 'materials' prop received from MaterialManagementPage
-  const [selectedMaterialType, setSelectedMaterialType] = useState('');
+function StockLevelChart({ data }) {
+  const chartData = Array.isArray(data) ? data : [];
 
-  const filteredChartMaterials = materials.filter(material => {
-    return selectedMaterialType === '' || material.materialType === selectedMaterialType;
-  });
+  // --- DEBUGGING LOGS (keep for now) ---
+  useEffect(() => {
+    console.log("StockLevelChart: Received data prop:", data);
+    console.log("StockLevelChart: Prepared chartData:", chartData);
 
-  // Calculate max stock for scaling the chart, considering both current and min stock (in PUOM) for better scaling
-  const maxStock = Math.max(
-    ...filteredChartMaterials.map(m => Math.max(m.currentStockPUOM || 0, m.minStockPUOM || 0)),
-    1 // Ensure at least 1 to avoid division by zero if all stocks are zero
-  );
+    if (chartData.length > 0) {
+      chartData.forEach((entry, index) => {
+        const currentStock = entry['Current Stock'];
+        const minStock = entry['Min Stock'];
+        console.log(`StockLevelChart: Entry ${index} (${entry.name}): Current Stock = ${currentStock}, Min Stock = ${minStock}`);
+        if (isNaN(Number(currentStock)) || isNaN(Number(minStock))) {
+          console.warn(`StockLevelChart: Entry ${index} has non-numeric stock values! Current: ${currentStock}, Min: ${minStock}`);
+        }
+      });
+    } else {
+      console.log("StockLevelChart: chartData is empty, no bars will be rendered.");
+    }
+  }, [chartData, data]);
+  // --- END DEBUGGING LOGS ---
+
+  // Determine Y-axis domain dynamically to ensure all bars are visible
+  const allStockValues = chartData.flatMap(entry => [Number(entry['Current Stock']), Number(entry['Min Stock'])])
+                                  .filter(val => !isNaN(val));
+
+  let minY = allStockValues.length > 0 ? Math.min(...allStockValues) : 0;
+  let maxY = allStockValues.length > 0 ? Math.max(...allStockValues) : 100; // Default max to 100 if no data
+
+  // Adjust domain to ensure visibility, especially for small or zero values
+  if (minY === 0 && maxY === 0) {
+      maxY = 10; // If all values are zero, show a small range
+  } else if (minY === maxY) { // If all values are the same non-zero value
+      minY = Math.max(0, minY * 0.9);
+      maxY = maxY * 1.1;
+  } else {
+      // Add some padding to the Y-axis domain for general cases
+      minY = Math.floor(minY * 0.9);
+      maxY = Math.ceil(maxY * 1.1);
+  }
+
+  // Ensure min is always less than max
+  if (minY >= maxY) {
+      minY = 0; // Fallback
+      maxY = Math.max(100, maxY + 10); // Ensure max is at least 100 or 10 more than current max
+  }
+
+  const yAxisDomain = [minY, maxY];
+  console.log("StockLevelChart: Calculated Y-Axis Domain:", yAxisDomain);
+
 
   return (
-    // Main container for the chart component itself (this is the "card" for the chart)
-    // Should be bg-mediumGreen, consistent with other content cards.
-    <div className="bg-mediumGreen p-6 rounded-xl shadow-lg mb-8 border border-gray-700">
-      <h2 className="text-2xl font-bold text-offWhite mb-4">Stock Levels Overview (in Purchase Units)</h2>
-      <div className="mb-4">
-        <label htmlFor="chartMaterialTypeFilter" className="block text-offWhite text-sm font-bold mb-1">Filter by Material Type:</label>
-        <select
-          id="chartMaterialTypeFilter"
-          value={selectedMaterialType}
-          onChange={(e) => setSelectedMaterialType(e.target.value)}
-          // Input styling: bg-white, text-deepGray, border-lightGreen, focus:ring-lightGreen, rounded-xl
-          className="shadow appearance-none border border-lightGreen rounded-xl w-full py-2 px-3 bg-white text-deepGray leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen focus:border-lightGreen transition duration-200"
-        >
-          <option value="" className="bg-white text-deepGray">All Types</option>
-          {/* Meticulously re-typed to eliminate hidden characters and ensure proper JSX structure */}
-          {materialTypes.map(type => (
-            <option key={type} value={type} className="bg-white text-deepGray">{type}</option>
-          ))}
-        </select>
-      </div>
-
-      {filteredChartMaterials.length === 0 ? (
-        <p className="text-offWhite/70">No materials to display for the selected type or no materials added yet.</p>
+    <div className="w-full h-80 bg-deepGray p-4 rounded-xl shadow-inner">
+      <h4 className="text-xl font-semibold mb-4 text-accentGold text-center">Material Stock Levels (PUOM)</h4>
+      {chartData.length === 0 ? (
+        <p className="text-gray-400 text-center py-10">No material data available to display chart.</p>
       ) : (
-        // Inner container for the chart bars. This div needs to correctly trigger horizontal scroll.
-        // `flex-nowrap` ensures items don't wrap, forcing overflow.
-        // `overflow-x-auto` is the key for the scrollbar.
-        // `min-w-0` is crucial here to allow the container to shrink and force the overflow.
-        <div
-          className="flex flex-nowrap items-end h-64 overflow-x-auto p-2 border border-lightGreen rounded-xl bg-deepGray min-w-0"
-        >
-          {filteredChartMaterials.map((material, index) => {
-            const barHeight = (material.currentStockPUOM / maxStock) * 100; // Percentage of max height
-            const minStockHeight = (material.minStockPUOM / maxStock) * 100; // Percentage of max height
-            const isBelowMin = material.currentStockPUOM < material.minStockPUOM;
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={chartData}
+            margin={{
+              top: 5, right: 30, left: 20, bottom: 5,
+            }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke={colors.gray[700]} />
+            <XAxis dataKey="name" stroke={colors.offWhite} tick={{ fill: colors.offWhite, fontSize: 12 }} />
+            {/* Dynamically set YAxis domain */}
+            <YAxis stroke={colors.offWhite} tick={{ fill: colors.offWhite, fontSize: 12 }} domain={yAxisDomain} />
+            <Tooltip
+              contentStyle={{ backgroundColor: colors.darkGray, borderColor: colors.gray[600], borderRadius: '8px' }}
+              labelStyle={{ color: colors.accentGold }}
+              itemStyle={{ color: colors.gray[300] }}
+            />
+            <Legend wrapperStyle={{ color: colors.offWhite, paddingTop: '10px' }} />
 
-            return (
-              // Individual bar container - minWidth ensures bars don't shrink too much.
-              // `flex-shrink-0` ensures it doesn't shrink below its min-width.
-              <div
-                key={material.id}
-                className="relative mx-1 h-full flex flex-col justify-end items-center flex-shrink-0"
-                style={{ minWidth: '60px' }} // Explicit min-width for each bar is important for bar readability
-              >
-                {/* Min Stock Line */}
-                {material.minStockPUOM > 0 && (
-                  <div
-                    className="absolute w-full border-b-2 border-dashed"
-                    style={{
-                      bottom: `${minStockHeight}%`,
-                      borderColor: colors.accentGold, // Accent gold for min stock line
-                      zIndex: 10,
-                    }}
-                  ></div>
-                )}
+            {/* Bar for Current Stock (PUOM) with conditional coloring */}
+            {/* dataKey must exactly match the key in the chartData objects */}
+            <Bar dataKey="Current Stock" name="Current Stock (PUOM)" maxBarSize={50} minBarSize={1}> {/* Added minBarSize */}
+                {
+                    chartData.map((entry, index) => {
+                        // Accessing values using bracket notation for keys with spaces
+                        const numericCurrentStock = Number(entry['Current Stock']);
+                        const numericMinStock = Number(entry['Min Stock']);
+                        const barFill = (
+                            !isNaN(numericCurrentStock) &&
+                            !isNaN(numericMinStock) &&
+                            numericCurrentStock <= numericMinStock
+                        ) ? colors.red[400] : colors.lightGreen;
+                        return <Cell key={`cell-${index}`} fill={barFill} />;
+                    })
+                }
+            </Bar>
 
-                {/* Current Stock Bar */}
-                <div
-                  className={`w-4/5 rounded-t-xl transition-all duration-300 relative`}
-                  style={{
-                    height: `${barHeight}%`,
-                    backgroundColor: isBelowMin ? '#EF4444' : colors.lightGreen, // Used direct hex for red-500, lightGreen for good stock
-                    zIndex: 5,
-                  }}
-                  title={`Code: ${material.code}\nStock: ${material.currentStockPUOM} ${material.puom}\nMin: ${material.minStockPUOM} ${material.puom}`}
-                >
-                  <span className="absolute -top-6 text-xs text-white" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-                    {material.currentStockPUOM}
-                  </span>
-                </div>
-                <span className="text-xs mt-1 text-offWhite text-center w-full truncate">F-CODE: {material.code}</span>
-              </div>
-            );
-          })}
-        </div>
+            {/* Dashed Reference Line for Min Stock (PUOM) */}
+            {/* Ensure the y value is correctly calculated and the key matches */}
+            {chartData.some(d => d['Min Stock'] !== undefined && d['Min Stock'] !== null && !isNaN(Number(d['Min Stock']))) && (
+                <ReferenceLine
+                    y={Math.min(...chartData.map(d => Number(d['Min Stock'])).filter(val => val !== undefined && val !== null && !isNaN(val)))}
+                    stroke={colors.blue[400]}
+                    strokeDasharray="3 3"
+                    label={{ position: 'top', value: 'Min Stock', fill: colors.blue[400] }}
+                />
+            )}
+
+          </BarChart>
+        </ResponsiveContainer>
       )}
     </div>
   );

@@ -1,41 +1,28 @@
-// src/pages/AuthPage.jsx
-// This component provides a simplified interface for staff Google Sign-In.
-//
-// Updates:
-// - Simplified UI to a single login button and "Authorised Users only" text.
-// - Removed 'Go to Public Quote App' button, replaced by primary navigation.
-// - Ensures `colors.blue[400]` syntax is used, now supported by constants.js.
+     // src/pages/AuthPage.jsx
+     import React from 'react';
 
-import React from 'react';
-import { colors } from '../utils/constants'; // Assuming you have colors in constants
+     function AuthPage({ onGoogleSignIn, navigateTo }) {
+       return (
+         <div className="flex flex-col items-center justify-center h-full bg-darkGray rounded-xl shadow-md p-6 text-center">
+           <h2 className="text-3xl font-bold mb-6 text-lightGreen">Staff Login</h2>
+           <p className="text-offWhite mb-4">Please sign in with your authorized Google account.</p>
+           <button
+             onClick={onGoogleSignIn}
+             className="bg-blue-600 text-offWhite font-bold py-3 px-6 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
+           >
+             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+               <path d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.328-7.439-7.464 0-4.136 3.344-7.464 7.439-7.464 2.29 0 3.986.947 4.976 1.858l3.18-3.179C19.232 2.042 16.51 0 12.24 0 5.463 0 0 5.336 0 12c0 6.663 5.463 12 12.24 12 6.821 0 11.854-4.735 11.854-11.536 0-.78-.07-1.53-.199-2.256H12.24z" />
+             </svg>
+             Sign In with Google
+           </button>
+           <button
+             onClick={() => navigateTo('instantQuote')}
+             className="mt-4 text-gray-400 hover:text-lightGreen transition duration-200"
+           >
+             Continue to Public Quote
+           </button>
+         </div>
+       );
+     }
 
-function AuthPage({ onGoogleSignIn, navigateTo }) {
-  const handleGoToPublicQuoteApp = () => {
-    navigateTo('quoteApp'); // Use the new 'quoteApp' pageName
-  };
-
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 font-['Poppins'] bg-deepGray text-offWhite">
-      <div className="bg-darkGray p-8 rounded-xl shadow-lg border border-gray-700 max-w-md w-full text-center">
-        <h2 className="text-3xl font-bold mb-6" style={{ color: colors.blue[400] }}>Staff Login</h2>
-        <p className="text-gray-300 mb-8">Authorised Users only</p>
-
-        <button
-          onClick={onGoogleSignIn}
-          className="w-full py-3 px-6 rounded-xl font-bold text-lg transition-colors duration-200 shadow-md flex items-center justify-center"
-          style={{ backgroundColor: colors.accentGold, color: colors.deepGray, hover: { backgroundColor: colors.lightGreen } }}
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google logo" className="w-6 h-6 mr-3" />
-          Sign in with Google
-        </button>
-
-        {/* Removed "Go to Public Quote App" button from AuthPage as navigation is now handled differently */}
-        <p className="mt-6 text-sm text-gray-400">
-          Not staff? <span onClick={handleGoToPublicQuoteApp} className="text-lightGreen cursor-pointer hover:underline">Go to Public Quote Page</span>
-        </p>
-      </div>
-    </div>
-  );
-}
-
-export default AuthPage;
+     export default AuthPage;

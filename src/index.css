@@ -1,18 +1,63 @@
 /* src/index.css */
-/* FIX: Moved @import rule to the very top as required by PostCSS. */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
 
-/* Import Poppins font from Google Fonts - MUST BE AT THE VERY TOP */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+/* Import Poppins font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Basic body styling (will be covered by deepGray utility after Tailwind config update) */
+/* Apply a global font and background for consistency */
 body {
-  background-color: #111827; /* deepGray */
+  font-family: 'Poppins', sans-serif;
+  background-color: #111827; /* deepGray from your palette */
+  color: #F3F4F6; /* offWhite from your palette */
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevent body scroll, let main content scroll */
 }
 
-/* Removed explicit !important rules for headings and paragraphs.
-   Tailwind utility classes (e.g., text-offWhite, text-lightGreen)
-   will now correctly apply colors based on the updated tailwind.config.js. */
+/* Ensure root element takes full height */
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Basic styling for form elements to ensure consistency */
+/* REMOVED @apply AND USED DIRECT CSS PROPERTIES */
+select, input[type="text"], input[type="number"], input[type="email"], input[type="password"] {
+  background-color: #1F2937; /* darkGray from your palette */
+  border: 1px solid #374151; /* gray-700 from your palette */
+  border-radius: 0.5rem; /* rounded-lg */
+  color: #F3F4F6; /* offWhite from your palette */
+  padding: 0.75rem; /* p-3 */
+  width: 100%; /* w-full */
+  /* Focus styles - these can still use Tailwind classes as they are not @apply directives */
+  outline: none; /* Remove default outline */
+}
+
+select:focus, input[type="text"]:focus, input[type="number"]:focus, input[type="email"]:focus, input[type="password"]:focus {
+  border-color: #4ade80; /* lightGreen from your palette */
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.5); /* Custom focus ring for lightGreen */
+}
+
+
+/* Custom scrollbar for better aesthetics */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1F2937; /* darkGray */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1A4D2E; /* darkGreen */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #738C71; /* lightGreen */
+}
