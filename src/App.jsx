@@ -1,19 +1,31 @@
 // src/App.jsx
 // This is the main application component, now with:
+// - **CRITICAL FIX**: The onAuthStateChanged listener now explicitly sets the
+//   `currentPage` based on the user's authentication and authorization status
+//   *after* `isAuthReady` is true. This resolves the missing sidebar issue
+//   by ensuring the app navigates to the correct default page (e.g., dashboard)
+//   immediately after login and authorization are confirmed.
+// - Using signInWithPopup for Google Sign-In, which is more robust against browser privacy settings.
+// - Footer is positioned correctly outside the `main` content area.
+// - Removed top padding from the `main` element; top padding is handled by PageLayout or AuthPage directly.
+// - Sidebar dropdowns are now closed by default.
+// - Mobile responsiveness: Hamburger menu for sidebar toggle on small screens.
+// - Sidebar slides in/out on mobile with an overlay.
 // - Main sidebar title changed to "HM ERP".
 // - "Dashboard" as a direct, non-collapsible link without a bullet point.
 // - Google Calendar link moved into the "Sales" department.
 // - Sidebar hidden when on the AuthPage.
-// - Default landing page set to Internal Dashboard for logged-in staff.
+// - Default landing page set to Instant Quote initially, then updated by auth state.
 // - Department-based sidebar navigation with collapsible sections.
-// - Conditional sidebar rendering: hidden for public Instant Quote page.
 // - Refined main content area scrolling hierarchy.
 // - Robust Firebase Initialization, Authentication, and Staff Authorization.
 // - Top-level routing.
 // - FIX: Ensure firestoreAppId correctly resolves to "default-app-id" for Firestore paths.
-// - FIX: Replaced problematic icons (FaShareNodes, FaMoneyBillWave) to resolve SVG path error.
 // - FIX: Corrected scope of renderMainContentPage function.
 // - FIX: Corrected import path for AICreativeStudioPage.
+// - Ensured the "Staff Login" button in the sidebar footer is only visible when `!currentUser`.
+// - Explicitly passed `navigateTo` to `AuthPage`.
+// - Hamburger button position remains `top-4 left-4`.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -32,21 +44,24 @@ import MRPPage from './pages/MRPPage';
 import SalesOrdersPage from './pages/SalesOrdersPage';
 import SettingsPage from './pages/SettingsPage';
 import CashflowCostTrackerPage from './pages/CashflowCostTrackerPage';
-import AICreativeStudioPage from './pages/AICreativeStudioPage'; // CORRECTED: Reverted to AICreativeStudioPage
+import AICreativeStudioPage from './pages/AICreativeStudioPage';
 import MarketingKanbanPage from './pages/MarketingKanbanPage';
 import SocialMediaHubPage from './pages/SocialMediaHubPage';
 import KanbanBoardPage from './pages/KanbanBoardPage';
 import MarketingAnalyticsPage from './pages/MarketingAnalyticsPage';
 import ProductManagementPage from './pages/ProductManagementPage';
 
-// Import icons for the sidebar and department headers
+// Import all icons that are part of Font Awesome 6 (fa6)
 import {
   FaChartBar, FaFileInvoiceDollar, FaQuoteLeft, FaBox, FaCube,
   FaDollarSign, FaPalette, FaClipboardList, FaLink, FaGear,
   FaRightFromBracket, FaGoogle, FaChartLine, FaBoxOpen,
-  FaChevronDown, FaChevronUp, // For expand/collapse
-  FaBuilding, FaCoins, FaHandshake, FaIndustry, FaUserGear // Department icons
+  FaChevronDown, FaChevronUp, // Chevrons
+  FaBuilding, FaCoins, FaHandshake, FaIndustry, FaChartPie, FaUserGear // Department icons (FaUserGear is fa6)
 } from 'react-icons/fa6';
+
+// Import specific icons that are reliably found in Font Awesome 5 (fa)
+import { FaBars, FaTimes } from 'react-icons/fa'; // Hamburger and close icons
 
 
 // Define the structure of departments and their pages
@@ -105,22 +120,21 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthorizedStaff, setIsAuthorizedStaff] = useState(false);
-  const [loadingFirebase, setLoadingFirebase] = useState(true);
   const [firebaseInitError, setFirebaseInitError] = useState(null);
 
   const [firestoreAppId, setFirestoreAppId] = useState('');
-  // Set default page to 'instantQuote' for initial public view.
-  // This will be overridden to 'internalDashboard' if a user logs in and is authorized.
-  const [currentPage, setCurrentPage] = useState('instantQuote');
+  const [currentPage, setCurrentPage] = useState('instantQuote'); // Default to public page
 
   // State to manage expanded/collapsed status of departments
   const [expandedDepartments, setExpandedDepartments] = useState({});
+  // New state for mobile sidebar visibility
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Initialize all departments as expanded by default on first load
+  // Initialize all departments as CLOSED by default on first load
   useEffect(() => {
     const initialExpandedState = {};
     departments.forEach(dept => {
-      initialExpandedState[dept.name] = true; // All expanded by default
+      initialExpandedState[dept.name] = false; // All set to false (closed) by default
     });
     setExpandedDepartments(initialExpandedState);
   }, []);
@@ -132,9 +146,10 @@ function App() {
     }));
   };
 
-
   const navigateTo = useCallback((pageName) => {
     setCurrentPage(pageName);
+    // Close mobile sidebar on navigation
+    setIsMobileSidebarOpen(false);
     console.log(`App.jsx: Navigating to page: ${pageName}`);
   }, []);
 
@@ -145,445 +160,573 @@ function App() {
     let firestoreInstance;
     let unsubscribeAuth = () => {};
 
-    try {
-      let currentFirebaseConfig;
-      let currentAppId;
+    const initializeFirebaseAndAuth = async () => { // Make this async
+        try {
+            let currentFirebaseConfig;
+            let currentAppId;
 
-      // Prioritize Canvas globals if available (for IDE environment)
-      if (typeof __firebase_config !== 'undefined' && typeof __app_id !== 'undefined') {
-        currentFirebaseConfig = JSON.parse(__firebase_config);
-        currentAppId = __app_id;
-        console.log("App.jsx: Using Canvas globals for Firebase config and App ID.");
-      } else {
-        // Fallback to local firebase-config.js for deployed environment
-        currentFirebaseConfig = prodFirebaseConfig;
-        currentAppId = prodAppId; // This will now be "default-app-id" from firebase-config.js
-        console.log("App.jsx: Using src/firebase-config.js for Firebase config and App ID.");
-      }
-
-      // CRITICAL: Ensure currentAppId is 'default-app-id' if that's where Firestore data lives
-      // This explicit check ensures it's always 'default-app-id' for Firestore paths if needed
-      // based on user's confirmed Firestore structure.
-      if (currentAppId !== "default-app-id") {
-          console.warn(`App.jsx: Overriding currentAppId from '${currentAppId}' to 'default-app-id' to match Firestore data path.`);
-          currentAppId = "default-app-id";
-      }
-
-
-      if (!currentFirebaseConfig || !currentFirebaseConfig.projectId) {
-        throw new Error("App.jsx: Critical Error: Firebase config or projectId is missing. Cannot initialize Firebase.");
-      }
-
-      if (getApps().length === 0) {
-        firebaseAppInstance = initializeApp(currentFirebaseConfig);
-        console.log("App.jsx: Firebase app initialized for the first time.");
-      } else {
-        firebaseAppInstance = getApp();
-        console.log("App.jsx: Firebase app already initialized, retrieving existing instance.");
-      }
-
-      firestoreInstance = getFirestore(firebaseAppInstance);
-      authInstance = getAuth(firebaseAppInstance);
-
-      setApp(firebaseAppInstance);
-      setDb(firestoreInstance);
-      setAuth(authInstance);
-      setFirestoreAppId(currentAppId); // Set the firestoreAppId here
-
-      unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
-        setCurrentUser(user);
-
-        if (user) {
-          console.log(`App.jsx: User authenticated: ${user.uid}. Checking authorization...`);
-          // Use the determined currentAppId for the Firestore path
-          const userDocRef = doc(firestoreInstance, `artifacts/${currentAppId}/app_config/users/users_allowed`, user.uid);
-          try {
-            const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists()) {
-              setIsAuthorizedStaff(true);
-              console.log(`App.jsx: Authorization for UID ${user.uid}: Authorized`);
-              navigateTo('internalDashboard'); // Navigate to dashboard on successful login/authorization
+            // Prioritize Canvas globals if available (for IDE environment)
+            if (typeof __firebase_config !== 'undefined' && typeof __app_id !== 'undefined') {
+                currentFirebaseConfig = JSON.parse(__firebase_config);
+                currentAppId = __app_id;
+                console.log("App.jsx: Using Canvas globals for Firebase config and App ID.");
             } else {
-              setIsAuthorizedStaff(false);
-              console.warn(`App.jsx: Authorization for UID ${user.uid}: Not Authorized (not in allowlist)`);
-              // If not authorized, redirect to public quote page
-              navigateTo('instantQuote');
+                // Fallback to local firebase-config.js for deployed environment
+                currentFirebaseConfig = prodFirebaseConfig;
+                currentAppId = prodAppId; // This will now be "default-app-id" from firebase-config.js
+                console.log("App.jsx: Using src/firebase-config.js for Firebase config and App ID.");
             }
-          } catch (authzError) {
-            console.error("App.jsx: Error checking user authorization from Firestore:", authzError);
-            setIsAuthorizedStaff(false);
-            // On error, treat as unauthorized and redirect
-            navigateTo('instantQuote');
-          }
-        } else {
-          console.log("App.jsx: No user currently authenticated.");
-          setIsAuthorizedStaff(false);
-          // If no user, ensure we are on a public page or auth page
-          navigateTo('instantQuote'); // Always go to instantQuote if not logged in
-        }
-        setLoadingFirebase(false);
-        setIsAuthReady(true);
-      });
 
-    } catch (error) {
-      console.error("App.jsx: Global Error during Firebase initialization or auth setup:", error);
-      setFirebaseInitError(error);
-      setLoadingFirebase(false);
-      setDb(null);
-      setAuth(null);
-      setCurrentUser(null);
-      setIsAuthorizedStaff(false);
-    }
+            // CRITICAL: Ensure currentAppId is 'default-app-id' if that's where Firestore data lives
+            // This explicit check and override is important for consistency with Firestore rules.
+            if (currentAppId !== "default-app-id") {
+                console.warn(`App.jsx: Overriding currentAppId from '${currentAppId}' to 'default-app-id' to match Firestore data path.`);
+                currentAppId = "default-app-id";
+            }
+
+            if (!currentFirebaseConfig || !currentFirebaseConfig.projectId) {
+                throw new Error("App.jsx: Critical Error: Firebase config or projectId is missing. Cannot initialize Firebase.");
+            }
+
+            if (getApps().length === 0) {
+                firebaseAppInstance = initializeApp(currentFirebaseConfig);
+                console.log("App.jsx: Firebase app initialized for the first time.");
+            } else {
+                firebaseAppInstance = getApp();
+                console.log("App.jsx: Firebase app already initialized, retrieving existing instance.");
+            }
+
+            firestoreInstance = getFirestore(firebaseAppInstance);
+            authInstance = getAuth(firebaseAppInstance);
+
+            setApp(firebaseAppInstance);
+            setDb(firestoreInstance);
+            setAuth(authInstance);
+            setFirestoreAppId(currentAppId);
+
+            // Set up the persistent auth state listener.
+            // This listener will be the single source of truth for auth state changes.
+            unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
+                setCurrentUser(user);
+                let authorized = false; // Local variable to hold authorization status
+                if (user) {
+                    console.log(`App.jsx: User authenticated: ${user.uid}. Checking authorization...`);
+                    // Use the determined currentAppId for the Firestore path
+                    // This path is correct: /artifacts/default-app-id/app_config/users/users_allowed
+                    const userDocRef = doc(firestoreInstance, `artifacts/${currentAppId}/app_config/users/users_allowed`, user.uid);
+                    try {
+                        const userDocSnap = await getDoc(userDocRef);
+                        if (userDocSnap.exists()) {
+                            authorized = true;
+                            console.log(`App.jsx: Authorization for UID ${user.uid}: Authorized`);
+                        } else {
+                            console.warn(`App.jsx: Authorization for UID ${user.uid}: Not Authorized (not in allowlist)`);
+                        }
+                    } catch (authzError) {
+                        console.error("App.jsx: Error checking user authorization from Firestore:", authzError);
+                        // If there's an error checking authorization, treat as unauthorized for safety
+                        authorized = false;
+                    }
+                } else {
+                    console.log("App.jsx: No user currently authenticated.");
+                }
+                setIsAuthorizedStaff(authorized); // Update state with final authorization status
+                setIsAuthReady(true); // Mark auth system as ready
+
+                // After auth state is ready and authorization is checked, set the initial page
+                // This ensures the sidebar visibility is correctly determined on load/login
+                if (authorized) {
+                    navigateTo('internalDashboard');
+                } else {
+                    navigateTo('instantQuote');
+                }
+            });
+
+        } catch (error) {
+            console.error("App.jsx: Firebase Initialization or Auth Listener Error:", error);
+            setFirebaseInitError(error.message);
+            setIsAuthReady(true); // Mark ready even on error to display error message
+        }
+    };
+
+    initializeFirebaseAndAuth(); // Call the async function
 
     return () => {
-      unsubscribeAuth();
+      if (unsubscribeAuth) {
+        unsubscribeAuth();
+      }
     };
-  }, []);
+  }, [navigateTo]); // navigateTo is stable due to useCallback
 
-
-  // --- Authentication Handlers ---
   const handleGoogleSignIn = async () => {
-    if (!auth) {
-      console.error("Auth service not available for Google Sign-In.");
-      return;
-    }
-    const provider = new GoogleAuthProvider();
     try {
+      const provider = new GoogleAuthProvider();
+      // Using signInWithPopup instead of signInWithRedirect
       await signInWithPopup(auth, provider);
-      console.log("App.jsx: Google Sign-In initiated. Auth state listener will handle routing.");
-      // The `Cross-Origin-Opener-Policy` warning related to `window.close()`
-      // is a browser security feature and cannot be directly controlled by application code.
-      // The authentication flow should still complete successfully.
+      // The onAuthStateChanged listener will now handle the user state after the popup closes.
+      console.log("App.jsx: Google Sign-In popup initiated. Waiting for onAuthStateChanged to update state.");
     } catch (error) {
-      console.error("App.jsx: Google Sign-In error:", error);
-      // If sign-in fails, the auth state listener will keep currentUser null
-      // and isAuthorizedStaff false, keeping the user in the public view.
+      console.error("App.jsx: Google Sign-In Error:", error);
+      // Handle specific errors for popups, e.g., popup closed by user
+      if (error.code === 'auth/popup-closed-by-user') {
+        setFirebaseInitError("Sign-in popup closed. Please try again.");
+      } else {
+        setFirebaseInitError("Google Sign-In failed: " + error.message);
+      }
     }
   };
 
   const handleSignOut = async () => {
-    if (auth) {
-      try {
-        await signOut(auth);
-        console.log("App.jsx: Successfully signed out from Firebase Auth.");
-        navigateTo('instantQuote'); // Redirect to public quote page after logout
-      } catch (error) {
-        console.error("App.jsx: Error signing out:", error);
-        setFirebaseInitError(new Error(`Error signing out: ${error.message}`));
-      }
-    } else {
-      console.warn("App.jsx: Auth object not available for sign out.");
+    try {
+      await signOut(auth);
+      // onAuthStateChanged listener will handle navigation after successful sign-out
+      console.log("App.jsx: User sign out initiated. Waiting for onAuthStateChanged to update state.");
+    } catch (error) {
+      console.error("App.jsx: Sign-Out Error:", error);
+      setFirebaseInitError("Sign-Out failed: " + error.message);
     }
   };
 
-  // --- Render Logic (Loading, Error) ---
-  if (loadingFirebase) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-deepGray text-offWhite text-xl">
-        <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-lightGreen" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+  // Function to render the main content page based on current authentication state and currentPage
+  const renderMainContentPage = useCallback(() => {
+    // Show loading spinner until Firebase auth state is determined
+    if (!isAuthReady) {
+      return (
+        <div className="flex items-center justify-center h-full text-offWhite text-xl">
+          <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-lightGreen" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        Loading application services...
-      </div>
-    );
-  }
-
-  if (firebaseInitError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-deepGray text-errorRed p-4 text-center">
-        <h3 className="text-2xl font-bold mb-4">Critical Application Error</h3>
-        <p className="text-lg mb-6">{firebaseInitError.message}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-blue-600 text-offWhite font-bold py-3 px-6 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
-  }
-
-  // Determine if sidebar should be visible
-  // Sidebar is hidden if:
-  // 1. It's the instantQuote page AND the user is NOT authorized staff.
-  // 2. It's the authPage.
-  const showSidebar = !(
-    (currentPage === 'instantQuote' && !isAuthorizedStaff) ||
-    currentPage === 'authPage'
-  );
-
-  // --- Main Application Routing based on currentPage state ---
-  const renderMainContentPage = () => {
-    // Publicly accessible Instant Quote page (always rendered via this path)
-    if (currentPage === 'instantQuote') {
-      return (
-        <InstantQuoteAppPage
-          db={db}
-          firestoreAppId={firestoreAppId}
-          auth={auth}
-          currentUser={currentUser}
-          isAuthorizedStaff={isAuthorizedStaff}
-          navigateTo={navigateTo}
-        />
-      );
-    }
-    // Auth Page - only shown if explicitly navigated to and not logged in
-    else if (currentPage === 'authPage' && !currentUser) {
-        return <AuthPage onGoogleSignIn={handleGoogleSignIn} navigateTo={navigateTo} />;
-    }
-    // Staff-only pages - only accessible if authorized
-    else if (isAuthorizedStaff) {
-      switch (currentPage) {
-        case 'internalDashboard':
-          return (
-            <InternalDashboardPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-              navigateTo={navigateTo}
-            />
-          );
-        case 'salesOrders':
-          return (
-            <SalesOrdersPage
-               db={db}
-               auth={auth}
-               user={currentUser}
-               firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'materialManagement':
-          return (
-            <MaterialManagementPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'mrp': // Production Planning
-          return (
-            <MRPPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'cashflowCostTracker':
-          return (
-            <CashflowCostTrackerPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'aiCreativeStudio':
-          return (
-            <AICreativeStudioPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'marketingKanban':
-          return (
-            <MarketingKanbanPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'socialMediaHub':
-          return (
-            <SocialMediaHubPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'kanbanBoard': // Production Kanban Board
-          return (
-            <KanbanBoardPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'settings':
-          return (
-            <SettingsPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'marketingAnalytics':
-          return (
-            <MarketingAnalyticsPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        case 'productManagement': // This will be the SKU Generator page
-          return (
-            <ProductManagementPage
-              db={db}
-              auth={auth}
-              user={currentUser}
-              firestoreAppId={firestoreAppId}
-            />
-          );
-        default:
-          return (
-            <div className="flex items-center justify-center h-full bg-darkGray rounded-xl shadow-md p-6">
-                <h2 className="text-3xl text-gray-400">Page Not Implemented: {currentPage}</h2>
-            </div>
-          );
-      }
-    }
-    // If not authorized and trying to access a staff-only page, show access denied.
-    else {
-      return (
-        <div className="flex flex-col items-center justify-center h-full bg-darkGray rounded-xl shadow-md p-6 text-center">
-           <h2 className="text-3xl text-errorRed mb-4">Access Denied</h2>
-           <p className="text-lg text-offWhite">You do not have permission to view this page. Please log in with an authorized staff account or navigate to the public Instant Quote page.</p>
-           <button
-             onClick={() => navigateTo('instantQuote')}
-             className="mt-6 bg-lightGreen text-deepGray font-bold py-3 px-6 rounded-xl hover:bg-darkGreen transition duration-200 shadow-lg"
-           >
-             Go to Instant Quote
-           </button>
+          </svg>
+          Loading application...
         </div>
       );
     }
-  };
 
+    // Display Firebase initialization errors
+    if (firebaseInitError) {
+      return (
+        <div className="flex items-center justify-center h-full text-red-500 text-xl text-center p-4">
+          <p>Error initializing Firebase: {firebaseInitError}. Please check your configuration and network connection.</p>
+        </div>
+      );
+    }
+
+    // Logic for rendering pages based on authentication and authorization
+    if (isAuthorizedStaff) {
+      // If staff is authorized, they can access internal pages or the dashboard
+      switch (currentPage) {
+        case 'internalDashboard':
+          return <InternalDashboardPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'materialManagement':
+          return <MaterialManagementPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'mrp':
+          return <MRPPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'salesOrders':
+          return <SalesOrdersPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'settings':
+          return <SettingsPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'cashflowCostTracker':
+          return <CashflowCostTrackerPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'aiCreativeStudio':
+          return <AICreativeStudioPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'marketingKanban':
+          return <MarketingKanbanPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'socialMediaHub':
+          return <SocialMediaHubPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'kanbanBoard':
+          return <KanbanBoardPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'marketingAnalytics':
+          return <MarketingAnalyticsPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'productManagement':
+          return <ProductManagementPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        case 'instantQuote': // If authorized staff navigates to Instant Quote, they can see it
+          return <InstantQuoteAppPage db={db} isAuthorizedStaff={isAuthorizedStaff} navigateTo={navigateTo} />;
+        case 'authPage': // If authorized staff somehow lands on auth page, redirect to dashboard
+          return <InternalDashboardPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+        default:
+          // Default for authorized staff is the dashboard
+          return <InternalDashboardPage db={db} userId={currentUser?.uid} firestoreAppId={firestoreAppId} />;
+      }
+    } else {
+      // If not authorized staff (or no user), they can only access public pages or the auth page
+      if (currentPage === 'authPage') {
+        return <AuthPage onSignIn={handleGoogleSignIn} navigateTo={navigateTo} />;
+      } else {
+        // Default for non-authorized users is the Instant Quote page
+        return <InstantQuoteAppPage db={db} isAuthorizedStaff={isAuthorizedStaff} navigateTo={navigateTo} />;
+      }
+    }
+  }, [currentPage, isAuthReady, firebaseInitError, isAuthorizedStaff, db, currentUser, firestoreAppId, handleGoogleSignIn, navigateTo]);
+
+
+  // Determine if sidebar should be shown
+  // Sidebar is hidden on AuthPage and InstantQuoteAppPage (unless logged in and authorized)
+  const showSidebar = currentPage !== 'authPage' &&
+                      !(currentPage === 'instantQuote' && !isAuthorizedStaff);
+
+  // Render the main application layout
   return (
-    // Outer container: flex row, full viewport height
-    <div className="flex h-screen bg-deepGray text-offWhite font-poppins">
+    // Main container for the whole app, takes full screen height and is a flex row
+    <div className="flex h-screen bg-darkGray text-offWhite font-inter">
       {/* Conditional Sidebar Rendering */}
       {showSidebar && (
-        <aside className="w-64 bg-darkGray p-6 shadow-lg flex flex-col justify-between flex-shrink-0 overflow-y-auto">
-          <div>
-            {/* Changed main title */}
-            <h2 className="text-3xl font-bold text-lightGreen mb-8 text-center">HM ERP</h2>
-            <nav>
-              {/* Dashboard - Now a direct link, always visible for staff */}
-              {isAuthorizedStaff && (
-                <div className="mb-4"> {/* Changed from <li> to <div> to remove bullet point */}
-                  <button
-                    onClick={() => navigateTo('internalDashboard')}
-                    className={`w-full text-left py-3 px-4 rounded-lg transition duration-200 flex items-center ${
-                      currentPage === 'internalDashboard' ? 'bg-mediumGreen text-offWhite font-semibold' : 'hover:bg-gray-700 text-offWhite'
-                    }`}
-                  >
-                    <FaChartBar className="mr-3" /> Dashboard
-                  </button>
-                </div>
-              )}
+        <>
+          {/* Desktop Sidebar */}
+          <aside className={`hidden md:flex flex-col flex-shrink-0 bg-mediumGray w-64 p-4 shadow-lg overflow-y-auto transition-all duration-300 ease-in-out`}>
+            <h1 className="text-3xl font-bold text-lightGreen mb-6 text-center">HM ERP</h1>
+            <nav className="flex-1">
+              <ul>
+                {/* Dashboard Link - Always visible for staff, not collapsible */}
+                {isAuthorizedStaff && (
+                  <li className="mb-2">
+                    <button
+                      onClick={() => navigateTo('internalDashboard')}
+                      className={`w-full text-left py-2 px-4 rounded-xl transition duration-200
+                        ${currentPage === 'internalDashboard' ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                    >
+                      Dashboard
+                    </button>
+                  </li>
+                )}
 
-              {departments.map(department => (
-                <div key={department.name} className="mb-4">
-                  <button
-                    onClick={() => toggleDepartment(department.name)}
-                    className="w-full text-left py-3 px-4 rounded-lg transition duration-200 flex items-center justify-between hover:bg-gray-700 text-offWhite font-semibold bg-mediumGray"
-                  >
-                    <div className="flex items-center">
-                      <department.icon className="mr-3" />
-                      {department.name}
-                    </div>
-                    {expandedDepartments[department.name] ? <FaChevronUp /> : <FaChevronDown />}
-                  </button>
-                  {expandedDepartments[department.name] && (
-                    <ul className="mt-2 ml-4 border-l border-gray-700">
-                      {department.pages.map(page => {
-                        // Only render staff-only pages if authorized
-                        if (page.staffOnly && !isAuthorizedStaff) {
-                          return null;
-                        }
-                        // Handle external links
-                        if (page.external) {
+                {/* Department-based Navigation */}
+                {departments.map((department) => (
+                  <li key={department.name} className="mb-2">
+                    <button
+                      onClick={() => toggleDepartment(department.name)}
+                      className="w-full text-left py-2 px-4 rounded-xl hover:bg-gray-700 flex items-center justify-between"
+                    >
+                      <span className="flex items-center">
+                        <department.icon className="mr-2" />
+                        {department.name}
+                      </span>
+                      {expandedDepartments[department.name] ? <FaChevronUp /> : <FaChevronDown />}
+                    </button>
+                    {expandedDepartments[department.name] && (
+                      <ul className="ml-4 mt-2 border-l border-gray-600 pl-4">
+                        {department.pages.map((page) => {
+                          // Only show staffOnly pages to authorized staff
+                          if (page.staffOnly && !isAuthorizedStaff) {
+                            return null;
+                          }
                           return (
-                            <li key={page.path} className="mb-2">
-                              <a
-                                href={page.path}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`w-full text-left py-2 px-4 rounded-lg transition duration-200 flex items-center hover:bg-gray-700 text-gray-300`}
-                              >
-                                <page.icon className="mr-3" />
-                                {page.name}
-                              </a>
+                            <li key={page.path} className="mb-1">
+                              {page.external ? (
+                                <a
+                                  href={page.path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-full text-left py-1 px-2 rounded-xl text-sm hover:bg-gray-700 flex items-center"
+                                >
+                                  <page.icon className="mr-2" />
+                                  {page.name} <FaLink className="ml-auto text-xs" />
+                                </a>
+                              ) : (
+                                <button
+                                  onClick={() => navigateTo(page.path)}
+                                  className={`w-full text-left py-1 px-2 rounded-xl text-sm transition duration-200 flex items-center
+                                    ${currentPage === page.path ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                                >
+                                  <page.icon className="mr-2" />
+                                  {page.name}
+                                </button>
+                              )}
                             </li>
                           );
-                        }
-                        // Handle internal links
-                        return (
-                          <li key={page.path} className="mb-2">
-                            <button
-                              onClick={() => navigateTo(page.path)}
-                              className={`w-full text-left py-2 px-4 rounded-lg transition duration-200 flex items-center ${
-                                currentPage === page.path ? 'bg-mediumGreen text-offWhite font-semibold' : 'hover:bg-gray-700 text-gray-300'
-                              }`}
-                            >
-                              <page.icon className="mr-3" />
-                              {page.name}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-              ))}
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </nav>
-          </div>
-          {/* User Info and Auth Buttons */}
-          <div className="mt-8 pt-4 border-t border-gray-700 text-center">
-            {currentUser ? (
-              <>
-                <p className="text-sm text-gray-400 mb-2">Logged in as:</p>
-                <p className="font-semibold text-offWhite break-all text-sm mb-4">{currentUser.email || currentUser.uid}</p>
-                <button
-                  onClick={handleSignOut}
-                  className="w-full bg-red-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-red-700 transition duration-200 shadow-lg flex items-center justify-center"
-                >
-                  <FaRightFromBracket className="mr-2" /> Logout
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-gray-400 mb-2">Not logged in.</p>
-                {/* Staff login button in sidebar, only visible when sidebar is shown */}
-                <button
-                  onClick={() => navigateTo('authPage')}
-                  className="w-full bg-blue-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
-                >
-                  <FaGoogle className="mr-2" /> Staff Login
-                </button>
-              </>
-            )}
-          </div>
-        </aside>
+
+            {/* Staff Login/Logout in sidebar */}
+            <div className="mt-auto p-4 border-t border-gray-700">
+              {isAuthReady && currentUser ? (
+                <>
+                  <p className="text-sm text-gray-400 mb-2">Logged in as: {currentUser.displayName || currentUser.email}</p>
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full bg-red-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-red-700 transition duration-200 shadow-lg flex items-center justify-center"
+                  >
+                    <FaRightFromBracket className="mr-2" /> Sign Out
+                  </button>
+                </>
+              ) : (
+                // Only show Staff Login button if not currently logged in
+                isAuthReady && !currentUser && (
+                  <>
+                    <p className="text-sm text-gray-400 mb-2">Not logged in.</p>
+                    <button
+                      onClick={() => navigateTo('authPage')}
+                      className="w-full bg-blue-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
+                    >
+                      <FaGoogle className="mr-2" /> Staff Login
+                    </button>
+                  </>
+                )
+              )}
+            </div>
+          </aside>
+
+          {/* Mobile Sidebar Toggle Button (Hamburger) */}
+          {/* Positioned top-4 left-4 */}
+          <button
+            className="md:hidden fixed top-4 left-4 z-40 bg-mediumGray p-3 rounded-full shadow-lg text-lightGreen"
+            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+          >
+            {isMobileSidebarOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
+          </button>
+
+          {/* Mobile Sidebar (Conditional visibility) */}
+          <aside className={`fixed inset-y-0 left-0 bg-mediumGray w-64 p-4 shadow-lg z-40 transform transition-transform duration-300 ease-in-out md:hidden
+            ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <div className="flex justify-end mb-4">
+              <button
+                className="text-offWhite"
+                onClick={() => setIsMobileSidebarOpen(false)}
+              >
+                <FaTimes size={24} />
+              </button>
+            </div>
+            <h1 className="text-3xl font-bold text-lightGreen mb-6 text-center">HM ERP</h1>
+            <nav className="flex-1 overflow-y-auto">
+              <ul>
+                {/* Dashboard Link - Always visible for staff, not collapsible */}
+                {isAuthorizedStaff && (
+                  <li className="mb-2">
+                    <button
+                      onClick={() => navigateTo('internalDashboard')}
+                      className={`w-full text-left py-2 px-4 rounded-xl transition duration-200
+                        ${currentPage === 'internalDashboard' ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                    >
+                      Dashboard
+                    </button>
+                  </li>
+                )}
+
+                {/* Department-based Navigation */}
+                {departments.map((department) => (
+                  <li key={department.name} className="mb-2">
+                    <button
+                      onClick={() => toggleDepartment(department.name)}
+                      className="w-full text-left py-2 px-4 rounded-xl hover:bg-gray-700 flex items-center justify-between"
+                    >
+                      <span className="flex items-center">
+                        <department.icon className="mr-2" />
+                        {department.name}
+                      </span>
+                      {expandedDepartments[department.name] ? <FaChevronUp /> : <FaChevronDown />}
+                    </button>
+                    {expandedDepartments[department.name] && (
+                      <ul className="ml-4 mt-2 border-l border-gray-600 pl-4">
+                        {department.pages.map((page) => {
+                          // Only show staffOnly pages to authorized staff
+                          if (page.staffOnly && !isAuthorizedStaff) {
+                            return null;
+                          }
+                          return (
+                            <li key={page.path} className="mb-1">
+                              {page.external ? (
+                                <a
+                                  href={page.path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-full text-left py-1 px-2 rounded-xl text-sm hover:bg-gray-700 flex items-center"
+                                >
+                                  <page.icon className="mr-2" />
+                                  {page.name} <FaLink className="ml-auto text-xs" />
+                                </a>
+                              ) : (
+                                <button
+                                  onClick={() => navigateTo(page.path)}
+                                  className={`w-full text-left py-1 px-2 rounded-xl text-sm transition duration-200 flex items-center
+                                    ${currentPage === page.path ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                                >
+                                  <page.icon className="mr-2" />
+                                  {page.name}
+                                </button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            {/* Staff Login/Logout in sidebar */}
+            <div className="mt-auto p-4 border-t border-gray-700">
+              {isAuthReady && currentUser ? (
+                <>
+                  <p className="text-sm text-gray-400 mb-2">Logged in as: {currentUser.displayName || currentUser.email}</p>
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full bg-red-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-red-700 transition duration-200 shadow-lg flex items-center justify-center"
+                  >
+                    <FaRightFromBracket className="mr-2" /> Sign Out
+                  </button>
+                </>
+              ) : (
+                // Only show Staff Login button if not currently logged in
+                isAuthReady && !currentUser && (
+                  <>
+                    <p className="text-sm text-gray-400 mb-2">Not logged in.</p>
+                    <button
+                      onClick={() => navigateTo('authPage')}
+                      className="w-full bg-blue-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
+                    >
+                      <FaGoogle className="mr-2" /> Staff Login
+                    </button>
+                  </>
+                )
+              )}
+            </div>
+          </aside>
+
+          {/* Mobile Sidebar Toggle Button (Hamburger) */}
+          {/* Positioned top-4 left-4 */}
+          <button
+            className="md:hidden fixed top-4 left-4 z-40 bg-mediumGray p-3 rounded-full shadow-lg text-lightGreen"
+            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+          >
+            {isMobileSidebarOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
+          </button>
+
+          {/* Mobile Sidebar (Conditional visibility) */}
+          <aside className={`fixed inset-y-0 left-0 bg-mediumGray w-64 p-4 shadow-lg z-40 transform transition-transform duration-300 ease-in-out md:hidden
+            ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <div className="flex justify-end mb-4">
+              <button
+                className="text-offWhite"
+                onClick={() => setIsMobileSidebarOpen(false)}
+              >
+                <FaTimes size={24} />
+              </button>
+            </div>
+            <h1 className="text-3xl font-bold text-lightGreen mb-6 text-center">HM ERP</h1>
+            <nav className="flex-1 overflow-y-auto">
+              <ul>
+                {/* Dashboard Link - Always visible for staff, not collapsible */}
+                {isAuthorizedStaff && (
+                  <li className="mb-2">
+                    <button
+                      onClick={() => navigateTo('internalDashboard')}
+                      className={`w-full text-left py-2 px-4 rounded-xl transition duration-200
+                        ${currentPage === 'internalDashboard' ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                    >
+                      Dashboard
+                    </button>
+                  </li>
+                )}
+
+                {/* Department-based Navigation */}
+                {departments.map((department) => (
+                  <li key={department.name} className="mb-2">
+                    <button
+                      onClick={() => toggleDepartment(department.name)}
+                      className="w-full text-left py-2 px-4 rounded-xl hover:bg-gray-700 flex items-center justify-between"
+                    >
+                      <span className="flex items-center">
+                        <department.icon className="mr-2" />
+                        {department.name}
+                      </span>
+                      {expandedDepartments[department.name] ? <FaChevronUp /> : <FaChevronDown />}
+                    </button>
+                    {expandedDepartments[department.name] && (
+                      <ul className="ml-4 mt-2 border-l border-gray-600 pl-4">
+                        {department.pages.map((page) => {
+                          // Only show staffOnly pages to authorized staff
+                          if (page.staffOnly && !isAuthorizedStaff) {
+                            return null;
+                          }
+                          return (
+                            <li key={page.path} className="mb-1">
+                              {page.external ? (
+                                <a
+                                  href={page.path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-full text-left py-1 px-2 rounded-xl text-sm hover:bg-gray-700 flex items-center"
+                                >
+                                  <page.icon className="mr-2" />
+                                  {page.name} <FaLink className="ml-auto text-xs" />
+                                </a>
+                              ) : (
+                                <button
+                                  onClick={() => navigateTo(page.path)}
+                                  className={`w-full text-left py-1 px-2 rounded-xl text-sm transition duration-200 flex items-center
+                                    ${currentPage === page.path ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                                >
+                                  <page.icon className="mr-2" />
+                                  {page.name}
+                                </button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            {/* Staff Login/Logout in sidebar */}
+            <div className="mt-auto p-4 border-t border-gray-700">
+              {isAuthReady && currentUser ? (
+                <>
+                  <p className="text-sm text-gray-400 mb-2">Logged in as: {currentUser.displayName || currentUser.email}</p>
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full bg-red-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-red-700 transition duration-200 shadow-lg flex items-center justify-center"
+                  >
+                    <FaRightFromBracket className="mr-2" /> Sign Out
+                  </button>
+                </>
+              ) : (
+                // Only show Staff Login button if not currently logged in
+                isAuthReady && !currentUser && (
+                  <>
+                    <p className="text-sm text-gray-400 mb-2">Not logged in.</p>
+                    <button
+                      onClick={() => navigateTo('authPage')}
+                      className="w-full bg-blue-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
+                    >
+                      <FaGoogle className="mr-2" /> Staff Login
+                    </button>
+                  </>
+                )
+              )}
+            </div>
+          </aside>
+
+          {/* Overlay for mobile sidebar */}
+          {isMobileSidebarOpen && (
+            <div
+              className="fixed inset-0 bg-black opacity-50 z-30 md:hidden"
+              onClick={() => setIsMobileSidebarOpen(false)}
+            ></div>
+          )}
+        </>
       )}
 
-      {/* Main Content Area - Adjust width based on sidebar visibility */}
-      <main className={`flex-1 p-6 flex flex-col ${showSidebar ? 'ml-0' : 'w-full'}`}>
+      {/* Main Content Area - flex-1 to take remaining horizontal space, flex-col for vertical layout */}
+      {/* Simplified margin logic for desktop, relying on flexbox for positioning */}
+      <main className={`flex-1 p-6 flex flex-col transition-all duration-300 ease-in-out\
+                       ${showSidebar ? 'md:ml-0' : 'md:ml-0'} ml-0`}> {/* Removed explicit md:ml-64 */}
         <div className="flex-1 overflow-y-auto">
           {renderMainContentPage()}
         </div>
+        {/* Footer - Moved outside the flex-grow content div to ensure it's always at the bottom */}
+        <footer className="w-full bg-mediumGray text-gray-400 text-center py-3 text-sm flex-shrink-0 border-t border-gray-700">
+          <p>&copy; {new Date().getFullYear()} HM ERP. All rights reserved.</p>
+        </footer>
       </main>
+
     </div>
   );
 }

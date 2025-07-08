@@ -6,9 +6,11 @@
 // Updates:
 // 1. Initial component structure created as a placeholder.
 // 2. Applied consistent styling using imported colors and blueprint principles.
+// 3. **UPDATED:** Integrated with the new PageLayout component for consistent page structure and mobile responsiveness.
 
 import React from 'react';
 import { colors } from '../utils/constants'; // Import colors for consistent styling
+import PageLayout from '../components/PageLayout'; // Import the new PageLayout component
 
 function MarketingKanbanPage({ db, firestoreAppId }) {
   // In future iterations, this page will:
@@ -17,28 +19,29 @@ function MarketingKanbanPage({ db, firestoreAppId }) {
   // - Link to content files or project details.
 
   return (
-    // Main container for Marketing Kanban page content.
-    <div className="w-full h-full flex flex-col min-w-0 text-offWhite">
-      {/* Page Title - following blueprint: text-blue-400, font-extrabold */}
-      <h1 className="text-4xl font-extrabold text-blue-400 mb-8">Marketing Kanban Board</h1>
-      <p className="text-gray-300 mb-6">
-        Organize and track your marketing content ideas and campaigns using a visual Kanban board.
-      </p>
-
-      {/* Placeholder Card for future Kanban functionality */}
-      <div className="mt-8 p-6 bg-mediumGreen rounded-xl shadow-lg border border-gray-700 w-full min-w-0">
-        <h3 className="text-xl font-semibold text-white mb-4">Marketing Workflow Management Coming Soon!</h3>
-        <p className="text-gray-300">
-          This Kanban board will help you:
-          <ul className="list-disc list-inside mt-2 text-gray-300">
-            <li>Brainstorm and categorize new marketing content ideas.</li>
-            <li>Visualize the progress of blogs, social media posts, and videos.</li>
-            <li>Keep your marketing initiatives organized and on track.</li>
-          </ul>
+    // Wrap the entire page content with PageLayout
+    <PageLayout pageTitle="Marketing Kanban Board">
+      {/* The main content for the Marketing Kanban page, now inside PageLayout */}
+      <div className="w-full flex flex-col text-offWhite"> {/* Removed h-full, min-w-0 */}
+        <p className="text-gray-300 mb-6">
+          Organize and track your marketing content ideas and campaigns using a visual Kanban board.
         </p>
-        <p className="text-gray-300 mt-4">Streamline your creative marketing process.</p>
+
+        {/* Placeholder Card for future Kanban functionality */}
+        <div className="mt-8 p-6 bg-mediumGreen rounded-xl shadow-lg border border-gray-700 w-full min-w-0">
+          <h3 className="text-xl font-semibold text-white mb-4">Marketing Workflow Management Coming Soon!</h3>
+          <p className="text-gray-300">
+            This Kanban board will help you:
+            <ul className="list-disc list-inside mt-2 text-gray-300">
+              <li>Brainstorm and categorize new marketing content ideas.</li>
+              <li>Visualize the progress of blogs, social media posts, and videos.</li>
+              <li>Keep your marketing initiatives organized and on track.</li>
+            </ul>
+          </p>
+          <p className="text-gray-300 mt-4">Streamline your creative marketing process.</p>
+        </div>
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

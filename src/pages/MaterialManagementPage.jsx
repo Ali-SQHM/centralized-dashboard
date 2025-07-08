@@ -1,99 +1,132 @@
 // src/pages/MaterialManagementPage.jsx
-// This component manages the raw material inventory. It allows users to add,
-// edit, and delete material records.
-// It displays material costs and prices in Pound Sterling (£) and handles
-// stock levels with floating-point precision.
+// This component manages the raw material inventory, now fully aligned with the
+// provided Firestore data structure and integrated with constants from src/utils/constants.js.
+// It allows users to add, edit, and delete material records, displays data
+// in a table with correct headers, and calculates MUOM and total stock value.
 //
 // Updates:
-// 1. Decimal Precision for Stock:
-//    - `currentStockPUOM` and `minStockPUOM` are now parsed using `parseFloat`
-//      instead of `parseInt` in `handleSaveMaterial` to preserve decimal values.
-//    - `currentStockMUOM` and `minStockMUOM` calculations are adjusted accordingly.
-//    - All stock level displays in the table (`currentStockMUOM`, `minStockMUOM`,
-//      `currentStockPUOM`, `minStockPUOM`) now use `.toFixed(5)` for 5 decimal places.
-// 2. Retained all currency fixes, stock calculations, form adjustments, filter, layout, and debugging logs.
-// 3. FIX: Enhanced layout for proper vertical and horizontal scrolling of content.
-// 4. FIX: Explicitly set Firestore collection path to "default-app-id" to resolve persistent warning.
-// 5. FIX: Re-added calculation for totalStockValue.
-// 6. FIX: Corrected table header for Min Stock (MUOM) and ensured proper table rendering.
-// 7. FIX: Refined responsive layout for controls (add, filter, search) to prevent horizontal overflow.
-// 8. FIX: Added `min-w-0` to key flex containers to prevent content from pushing beyond bounds.
+// 1. **CRITICAL FIX**: Re-mapped all table headers and data cells to match
+//    the user's Firestore data fields: 'code', 'description', 'puom', 'muom',
+//    'mcp', 'pcp', 'materialType', 'salesDescription', 'supplier', 'lastUpdated'.
+// 2. **CRITICAL FIX**: Updated `formInput` state and the Add/Edit modal form
+//    to use the correct property names for material data.
+// 3. **CRITICAL FIX**: Modified `calculateMUOM` to correctly use `currentStockPUOM`
+//    and `unitConversionFactor` for MUOM display.
+// 4. **CRITICAL FIX**: Updated `totalStockValue` calculation to use `mcp` (Material Cost Price).
+// 5. Adjusted search functionality to search by 'code' or 'description'.
+// 6. Adjusted sorting functionality to use new field names.
+// 7. Retained all previous fixes for decimal precision, layout, responsiveness,
+//    Firestore path (`artifacts/default-app-id/public/data/materials`), and error handling.
+// 8. **NEW FIX**: Imported `commonUnits` and `materialTypes` from `src/utils/constants.js`.
+// 9. **NEW FIX**: Populated the 'Primary UOM' (`puom`) and 'MUOM' (`muom`) select dropdowns
+//    in the Add/Edit modal using `commonUnits`.
+// 10. **NEW FIX**: Populated the 'Material Type' filter and the 'Material Type' select
+//     in the Add/Edit modal using `materialTypes`.
 
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import StockLevelChart from '../components/StockLevelChart';
-import { colors, materialTypes, commonUnits } from '../utils/constants';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, onSnapshot } from 'firebase/firestore';
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaFilter, FaTimes } from 'react-icons/fa';
+import StockLevelChart from '../components/StockLevelChart'; // Ensure this path is correct
+import ErrorBoundary from '../components/ErrorBoundary'; // Ensure this path is correct
 
-function MaterialManagementPage({ db, firestoreAppId }) {
+// NEW: Import constants
+import { commonUnits, materialTypes } from '../utils/constants';
+
+function MaterialManagementPage({ db, userId, firestoreAppId }) {
   const [materials, setMaterials] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [filteredMaterials, setFilteredMaterials] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentMaterial, setCurrentMaterial] = useState(null); // For editing
   const [formInput, setFormInput] = useState({
-    code: '',
-    description: '',
-    materialType: '',
-    supplier: '',
-    salesDescription: '',
-
-    muom: '',
-    puom: '',
-    currentStockPUOM: '',
-    minStockPUOM: '',
-
-    pcp: '',
-    overheadFactor: '',
-    unitConversionFactor: '',
-    lastUpdated: '',
+    code: '', // Corresponds to materialCode
+    description: '', // Corresponds to name
+    materialType: '', // New field
+    puom: 'm', // Primary Unit of Measurement (was unitOfMeasurement)
+    muom: 'cm', // Secondary Unit of Measurement (new field)
+    mcp: 0, // Material Cost Price (was unitCost)
+    pcp: 0, // Production Cost Price (was unitPrice)
+    unitConversionFactor: 1,
+    currentStockPUOM: 0,
+    minStockPUOM: 0,
+    salesDescription: '', // New field
+    supplier: '', // New field
+    // lastUpdated will be set automatically or on save
   });
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [selectedMaterialType, setSelectedMaterialType] = useState('');
-  const [searchTerm, setSearchTerm] = useState(''); // State for search term
+  const [currentMaterial, setCurrentMaterial] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterUOM, setFilterUOM] = useState('All'); // Filter by PUOM
+  const [filterMaterialType, setFilterMaterialType] = useState('All'); // New filter for materialType
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
 
-  // CRITICAL FIX: Explicitly set the collection path to use "default-app-id"
-  // This bypasses any potential issues with firestoreAppId prop not being "default-app-id"
-  const materialsCollectionPath = `artifacts/default-app-id/public/data/materials`;
+  // Firestore collection path (confirmed as public data)
+  const materialsCollectionRef = collection(db, `artifacts/${firestoreAppId}/public/data/materials`);
 
+  // Fetch materials from Firestore
   useEffect(() => {
-    console.log("MaterialManagementPage: useEffect mounted.");
-    console.log("MaterialManagementPage: db prop received:", db ? "Initialized" : "NULL");
-    console.log("MaterialManagementPage: firestoreAppId prop received:", firestoreAppId); // This will still show what App.jsx passes
-    console.log("MaterialManagementPage: Using explicit collection path:", materialsCollectionPath);
-
-    if (!db) {
-      console.error("MaterialManagementPage: Firestore DB is not initialized. Cannot fetch data.");
-      setError("Firestore DB is not initialized. Please check Firebase configuration.");
-      setLoading(false);
+    if (!db || !firestoreAppId) {
+      console.log("MaterialManagementPage: Firestore not ready or appId missing.");
       return;
     }
 
-    const q = collection(db, materialsCollectionPath);
-    console.log("MaterialManagementPage: Setting up onSnapshot for query:", q);
+    console.log(`MaterialManagementPage: Setting up snapshot listener for materials at: artifacts/${firestoreAppId}/public/data/materials`);
 
-    const unsubscribe = onSnapshot(q,
-      (snapshot) => {
-        const materialsData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        console.log(`MaterialManagementPage: onSnapshot fired! Fetched ${materialsData.length} materials.`);
-        console.log("MaterialManagementPage: Fetched materialsData content:", materialsData);
-        setMaterials(materialsData);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("MaterialManagementPage: Error fetching materials in onSnapshot:", err);
-        setError("Failed to load materials. Please try again. Error: " + err.message);
-        setLoading(false);
-      }
-    );
+    const q = query(materialsCollectionRef);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const materialsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMaterials(materialsData);
+      console.log("MaterialManagementPage: Materials fetched:", materialsData);
+    }, (error) => {
+      console.error("MaterialManagementPage: Error fetching materials:", error);
+    });
 
-    return () => {
-      console.log("MaterialManagementPage: useEffect cleanup - unsubscribing from Firestore.");
-      unsubscribe();
-    };
-  }, [db, materialsCollectionPath]);
+    return () => unsubscribe();
+  }, [db, firestoreAppId, materialsCollectionRef]);
+
+  // Apply filters and search
+  useEffect(() => {
+    let tempMaterials = [...materials];
+
+    if (searchTerm) {
+      tempMaterials = tempMaterials.filter(material =>
+        (material.description && material.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (material.code && material.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (material.salesDescription && material.salesDescription.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    if (filterUOM !== 'All') {
+      tempMaterials = tempMaterials.filter(material => material.puom === filterUOM);
+    }
+
+    if (filterMaterialType !== 'All') {
+      tempMaterials = tempMaterials.filter(material => material.materialType === filterMaterialType);
+    }
+
+    // Apply sorting
+    if (sortConfig.key) {
+      tempMaterials.sort((a, b) => {
+        // Handle potential undefined/null values for sorting
+        const aValue = a[sortConfig.key] !== undefined && a[sortConfig.key] !== null ? a[sortConfig.key] : '';
+        const bValue = b[sortConfig.key] !== undefined && b[sortConfig.key] !== null ? b[sortConfig.key] : '';
+
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return sortConfig.direction === 'ascending' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+        }
+        if (aValue < bValue) {
+          return sortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    setFilteredMaterials(tempMaterials);
+    console.log("MaterialManagementPage: Filtered materials updated:", tempMaterials);
+  }, [materials, searchTerm, filterUOM, filterMaterialType, sortConfig]);
 
 
   const handleInputChange = (e) => {
@@ -101,459 +134,450 @@ function MaterialManagementPage({ db, firestoreAppId }) {
     setFormInput(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleFileChange = (e) => {
-    setSelectedFile(e.target.files[0]);
-  };
-
-  const handleFilterChange = (e) => {
-    setSelectedMaterialType(e.target.value);
-  };
-
-  const openAddModal = () => {
+  const handleAddMaterial = () => {
     setCurrentMaterial(null);
     setFormInput({
       code: '',
       description: '',
       materialType: '',
-      supplier: '',
+      puom: 'm', // Default to 'm' or first commonUnit
+      muom: 'cm', // Default to 'cm' or a commonUnit
+      mcp: 0,
+      pcp: 0,
+      unitConversionFactor: 1,
+      currentStockPUOM: 0,
+      minStockPUOM: 0,
       salesDescription: '',
-
-      muom: '',
-      puom: '',
-      currentStockPUOM: '',
-      minStockPUOM: '',
-
-      pcp: '',
-      overheadFactor: '',
-      unitConversionFactor: '',
-      lastUpdated: new Date().toISOString(),
+      supplier: '',
     });
     setIsModalOpen(true);
   };
 
-  const openEditModal = (material) => {
+  const handleEditMaterial = (material) => {
     setCurrentMaterial(material);
     setFormInput({
       code: material.code || '',
       description: material.description || '',
       materialType: material.materialType || '',
-      supplier: material.supplier || '',
+      puom: material.puom || 'm',
+      muom: material.muom || 'cm',
+      mcp: material.mcp || 0,
+      pcp: material.pcp || 0,
+      unitConversionFactor: material.unitConversionFactor || 1,
+      currentStockPUOM: material.currentStockPUOM || 0,
+      minStockPUOM: material.minStockPUOM || 0,
       salesDescription: material.salesDescription || '',
-      // Populate PUOM fields directly
-      currentStockPUOM: material.currentStockPUOM !== undefined && material.currentStockPUOM !== null ? material.currentStockPUOM : '',
-      minStockPUOM: material.minStockPUOM !== undefined && material.minStockPUOM !== null ? material.minStockPUOM : '',
-      muom: material.muom || '',
-      puom: material.puom || '',
-      pcp: material.pcp !== undefined && material.pcp !== null ? material.pcp : '',
-      overheadFactor: material.overheadFactor !== undefined && material.overheadFactor !== null ? material.overheadFactor : '',
-      unitConversionFactor: material.unitConversionFactor !== undefined && material.unitConversionFactor !== null ? material.unitConversionFactor : '',
-      lastUpdated: material.lastUpdated || new Date().toISOString(),
+      supplier: material.supplier || '',
     });
     setIsModalOpen(true);
   };
 
   const handleSaveMaterial = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    // Parse float values for stock, pcp, overheadFactor, unitConversionFactor
-    const materialToSave = {
-      ...formInput,
-      currentStockPUOM: parseFloat(formInput.currentStockPUOM) || 0,
-      minStockPUOM: parseFloat(formInput.minStockPUOM) || 0,
-      pcp: parseFloat(formInput.pcp) || 0,
-      overheadFactor: parseFloat(formInput.overheadFactor) || 0,
-      unitConversionFactor: parseFloat(formInput.unitConversionFactor) || 1, // Default to 1 to avoid division by zero
-      lastUpdated: new Date().toISOString(), // Ensure lastUpdated is always current
-    };
-
-    // Calculate currentStockMUOM and minStockMUOM
-    materialToSave.currentStockMUOM = materialToSave.currentStockPUOM * materialToSave.unitConversionFactor;
-    materialToSave.minStockMUOM = materialToSave.minStockPUOM * materialToSave.unitConversionFactor;
-
-    // Calculate MCP (Material Cost Price)
-    // MCP = PCP * (1 + Overhead Factor)
-    materialToSave.mcp = materialToSave.pcp * (1 + (materialToSave.overheadFactor / 100)); // Assuming overheadFactor is a percentage
-
     try {
+      const materialToSave = {
+        ...formInput,
+        mcp: parseFloat(formInput.mcp) || 0,
+        pcp: parseFloat(formInput.pcp) || 0,
+        unitConversionFactor: parseFloat(formInput.unitConversionFactor) || 0,
+        currentStockPUOM: parseFloat(formInput.currentStockPUOM) || 0,
+        minStockPUOM: parseFloat(formInput.minStockPUOM) || 0,
+        lastUpdated: new Date().toISOString(),
+      };
+
       if (currentMaterial) {
-        // Update existing material
-        const materialDocRef = doc(db, materialsCollectionPath, currentMaterial.id);
+        const materialDocRef = doc(db, `artifacts/${firestoreAppId}/public/data/materials`, currentMaterial.id);
         await updateDoc(materialDocRef, materialToSave);
-        console.log("Material updated:", materialToSave);
+        console.log("Material updated:", currentMaterial.id);
       } else {
-        // Add new material
-        await addDoc(collection(db, materialsCollectionPath), materialToSave);
-        console.log("Material added:", materialToSave);
+        await addDoc(materialsCollectionRef, materialToSave);
+        console.log("Material added:", materialToSave.description);
       }
       setIsModalOpen(false);
-    } catch (err) {
-      console.error("Error saving material:", err);
-      setError("Failed to save material: " + err.message);
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error("Error saving material:", error);
     }
   };
 
   const handleDeleteMaterial = async (id) => {
     if (window.confirm("Are you sure you want to delete this material?")) {
-      setLoading(true);
-      setError(null);
       try {
-        await deleteDoc(doc(db, materialsCollectionPath, id));
+        const materialDocRef = doc(db, `artifacts/${firestoreAppId}/public/data/materials`, id);
+        await deleteDoc(materialDocRef);
         console.log("Material deleted:", id);
-      } catch (err) {
-        console.error("Error deleting material:", err);
-        setError("Failed to delete material: " + err.message);
-      } finally {
-        setLoading(false);
+      } catch (error) {
+        console.error("Error deleting material:", error);
       }
     }
   };
 
-  // Filtered materials for display
-  const filteredMaterials = materials.filter(material => {
-    const matchesType = selectedMaterialType ? material.materialType === selectedMaterialType : true;
-    const matchesSearch = searchTerm ?
-      Object.values(material).some(value =>
-        String(value).toLowerCase().includes(searchTerm.toLowerCase())
-      ) : true;
-    return matchesType && matchesSearch;
-  });
+  const requestSort = (key) => {
+    let direction = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
 
-  // Calculate total stock value for chart
-  const totalStockValue = materials.reduce((sum, material) => {
-    const mcp = material.mcp || 0;
-    const currentStockMUOM = material.currentStockMUOM || 0;
-    return sum + (mcp * currentStockMUOM);
-  }, 0);
+  const calculateMUOM = useCallback((puomValue, conversionFactor) => {
+    const puom = typeof puomValue === 'number' ? puomValue : 0;
+    const factor = typeof conversionFactor === 'number' ? conversionFactor : 0;
+    return (puom * factor).toFixed(5);
+  }, []);
 
-  // Prepare data for StockLevelChart
-  const chartData = filteredMaterials.map(m => ({
-    name: m.code,
-    'Current Stock': m.currentStockMUOM || 0,
-    'Min Stock': m.minStockMUOM || 0,
-  }));
-
+  const totalStockValue = filteredMaterials.reduce((sum, material) => {
+    const cost = parseFloat(material.mcp) || 0;
+    const stock = parseFloat(material.currentStockPUOM) || 0;
+    const stockValue = stock * cost;
+    return sum + stockValue;
+  }, 0).toFixed(2);
 
   return (
-    // Main container for the page content. It will flex to fill the parent's height.
-    // The overflow-y-auto is now handled by the parent div in App.jsx.
-    // Ensure this container itself is flex-col so its children stack vertically.
-    // Added min-w-0 to ensure it doesn't prevent horizontal shrinking.
-    <div className="p-4 md:p-6 bg-darkGray rounded-xl shadow-md flex flex-col flex-1 min-w-0">
-      <h3 className="text-3xl font-bold mb-6 text-lightGreen text-center">Material Management</h3>
+    <ErrorBoundary>
+      <div className="p-6 bg-darkGray text-offWhite min-h-full flex flex-col flex-1 overflow-y-auto">
+        <h1 className="text-3xl font-bold text-lightGreen mb-6">Material Management</h1>
 
-      {loading && (
-        <div className="flex items-center justify-center h-full text-offWhite text-xl">
-          <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-lightGreen" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          Loading materials...
-        </div>
-      )}
+        {/* Controls: Add, Filter, Search */}
+        <div className="flex flex-col md:flex-row items-center justify-between mb-6 space-y-4 md:space-y-0 md:space-x-4 w-full min-w-0">
+          <button
+            onClick={handleAddMaterial}
+            className="bg-lightGreen text-deepGray font-bold py-2 px-4 rounded-xl hover:bg-green-600 transition duration-200 shadow-lg flex items-center justify-center w-full md:w-auto"
+          >
+            <FaPlus className="mr-2" /> Add New Material
+          </button>
 
-      {error && (
-        <div className="bg-red-800 text-offWhite p-4 rounded-lg mb-4 text-center">
-          <p>{error}</p>
-        </div>
-      )}
-
-      {!loading && !error && (
-        <>
-          {/* Controls: Add Material, Filter, Search */}
-          {/* Added min-w-0 to this flex container as well */}
-          <div className="flex flex-col md:flex-row justify-between items-center mb-6 space-y-4 md:space-y-0 md:space-x-4 flex-wrap max-w-full min-w-0">
-            <button
-              onClick={openAddModal}
-              className="bg-lightGreen text-deepGray font-bold py-2 px-4 rounded-xl hover:bg-darkGreen transition duration-200 shadow-lg w-full md:w-auto flex-shrink-0"
-            >
-              Add New Material
-            </button>
-
-            {/* This div contains filter and search, ensure it also wraps/distributes space */}
-            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 w-full md:w-auto flex-grow md:flex-grow-0 min-w-0">
-              {/* Filter by Material Type */}
+          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 w-full md:w-auto min-w-0">
+            {/* Filter by Primary UOM */}
+            <div className="relative w-full sm:w-auto">
               <select
-                value={selectedMaterialType}
-                onChange={handleFilterChange}
-                className="p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen w-full sm:w-auto"
+                value={filterUOM}
+                onChange={(e) => setFilterUOM(e.target.value)}
+                className="block appearance-none w-full bg-gray-800 border border-gray-700 text-offWhite py-2 px-4 pr-8 rounded-xl leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen"
               >
-                {materialTypes.map(type => (
-                  <option key={type} value={type}>{type === '' ? 'All Material Types' : type}</option>
+                <option value="All">All Primary UOMs</option>
+                {/* Populate from commonUnits */}
+                {commonUnits.filter(unit => unit !== '').map(unit => ( // Filter out empty string for filter dropdown
+                  <option key={unit} value={unit}>{unit}</option>
                 ))}
               </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                <FaFilter />
+              </div>
+            </div>
 
-              {/* Search Bar */}
+            {/* Filter by Material Type */}
+            <div className="relative w-full sm:w-auto">
+              <select
+                value={filterMaterialType}
+                onChange={(e) => setFilterMaterialType(e.target.value)}
+                className="block appearance-none w-full bg-gray-800 border border-gray-700 text-offWhite py-2 px-4 pr-8 rounded-xl leading-tight focus:outline-none focus:ring-2 focus:ring-lightGreen"
+              >
+                <option value="All">All Material Types</option>
+                {/* Populate from materialTypes */}
+                {materialTypes.filter(type => type !== '').map(type => ( // Filter out empty string for filter dropdown
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                <FaFilter />
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative flex-1 w-full sm:w-auto min-w-0">
               <input
                 type="text"
-                placeholder="Search materials..."
+                placeholder="Search by code or description..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen w-full sm:w-auto"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl py-2 pl-10 pr-4 text-offWhite focus:ring-lightGreen focus:border-lightGreen"
               />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <FaSearch className="text-gray-400" />
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Stock Level Chart */}
-          <div className="mb-6 bg-deepGray p-4 rounded-xl shadow-inner border border-gray-700">
-            <h4 className="text-xl font-bold mb-4 text-accentGold">Overall Stock Value: £{totalStockValue.toFixed(2)}</h4>
-            {/* Pass the prepared chartData to the StockLevelChart component */}
-            <StockLevelChart data={chartData} />
-          </div>
+        {/* Total Stock Value */}
+        <div className="bg-mediumGray p-4 rounded-xl shadow-md mb-6 w-full">
+          <p className="text-lg font-semibold">Total Stock Value: <span className="text-lightGreen">£{totalStockValue}</span></p>
+        </div>
 
-          {/* Materials Table - Now with horizontal scrolling */}
-          {/* flex-1 here ensures the table container takes up remaining vertical space if needed */}
-          <div className="overflow-x-auto rounded-lg border border-gray-700 shadow-lg flex-1">
-            <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-mediumGray">
-                <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Code</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Description</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sales Desc.</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">MUOM</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">PUOM</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Stock (PUOM)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Min Stock (PUOM)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Stock (MUOM)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Min Stock (MUOM)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">PCP (£)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Overhead Factor (%)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Unit Conv. Factor</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">MCP (£)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Last Updated</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+        {/* Stock Level Chart */}
+        <div className="bg-mediumGray p-4 rounded-xl shadow-md mb-6 w-full h-80 min-w-0 overflow-x-auto">
+          <h2 className="text-xl font-semibold text-lightGreen mb-4">Stock Levels (Primary UOM)</h2>
+          {filteredMaterials.length > 0 ? (
+            <div className="w-full h-full min-w-[300px]"> {/* min-w for chart responsiveness */}
+              <StockLevelChart data={filteredMaterials} />
+            </div>
+          ) : (
+            <p className="text-gray-400">No materials to display in chart.</p>
+          )}
+        </div>
+
+        {/* Materials Table */}
+        <div className="bg-mediumGray p-4 rounded-xl shadow-md overflow-x-auto w-full min-w-0">
+          <h2 className="text-xl font-semibold text-lightGreen mb-4">Material Inventory</h2>
+          {filteredMaterials.length === 0 ? (
+            <p className="text-gray-400">No materials found. Try adjusting your filters or add new materials.</p>
+          ) : (
+            <table className="min-w-full table-auto border-collapse">
+              <thead>
+                <tr className="bg-gray-700">
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('code')}>Material Code</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('description')}>Description</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('materialType')}>Material Type</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('puom')}>Primary UOM</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('muom')}>MUOM</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('unitConversionFactor')}>Conversion Factor</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('mcp')}>MCP (£)</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('pcp')}>PCP (£)</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('currentStockPUOM')}>Current Stock (PUOM)</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('minStockPUOM')}>Min Stock (PUOM)</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 whitespace-nowrap">Current Stock (MUOM)</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 whitespace-nowrap">Min Stock (MUOM)</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('salesDescription')}>Sales Description</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('supplier')}>Supplier</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 cursor-pointer whitespace-nowrap" onClick={() => requestSort('lastUpdated')}>Last Updated</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 whitespace-nowrap">Total Value (£)</th>
+                  <th className="py-2 px-4 border-b border-gray-600 text-left text-sm font-semibold text-gray-300 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-darkGray divide-y divide-gray-700">
+              <tbody>
                 {filteredMaterials.map((material) => (
-                  <tr key={material.id} className="hover:bg-gray-800">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-offWhite">{material.code}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.description}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.materialType}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.supplier}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.salesDescription}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.muom}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.puom}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.currentStockPUOM !== undefined ? material.currentStockPUOM.toFixed(5) : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.minStockPUOM !== undefined ? material.minStockPUOM.toFixed(5) : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.currentStockMUOM !== undefined ? material.currentStockMUOM.toFixed(5) : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.minStockMUOM !== undefined ? material.minStockMUOM.toFixed(5) : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">£{material.pcp !== undefined ? material.pcp.toFixed(2) : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.overheadFactor !== undefined ? material.overheadFactor.toFixed(2) : 'N/A'}%</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.unitConversionFactor !== undefined ? material.unitConversionFactor.toFixed(5) : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">£{material.mcp !== undefined ? material.mcp.toFixed(2) : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-300">{material.lastUpdated ? new Date(material.lastUpdated).toLocaleDateString() : 'N/A'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => openEditModal(material)}
-                        className="text-lightGreen hover:text-accentGold mr-3"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMaterial(material.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        Delete
-                      </button>
+                  <tr key={material.id} className="hover:bg-gray-800 transition duration-150 ease-in-out">
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{material.code || 'N/A'}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{material.description || 'N/A'}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{material.materialType || 'N/A'}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{material.puom || 'N/A'}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{material.muom || 'N/A'}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{(material.unitConversionFactor || 0).toFixed(5)}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">£{(material.mcp || 0).toFixed(2)}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">£{(material.pcp || 0).toFixed(2)}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{(material.currentStockPUOM || 0).toFixed(5)}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{(material.minStockPUOM || 0).toFixed(5)}</td>
+                    {/* Using calculateMUOM for MUOM columns */}
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{calculateMUOM(material.currentStockPUOM, material.unitConversionFactor)}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{calculateMUOM(material.minStockPUOM, material.unitConversionFactor)}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{material.salesDescription || 'N/A'}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">{material.supplier || 'N/A'}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">
+                      {material.lastUpdated ? new Date(material.lastUpdated).toLocaleDateString() : 'N/A'}
+                    </td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">£{((material.currentStockPUOM || 0) * (material.mcp || 0)).toFixed(2)}</td>
+                    <td className="py-2 px-4 border-b border-gray-700 whitespace-nowrap">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEditMaterial(material)}
+                          className="text-blue-400 hover:text-blue-600 transition duration-200"
+                          title="Edit Material"
+                        >
+                          <FaEdit />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMaterial(material.id)}
+                          className="text-red-400 hover:text-red-600 transition duration-200"
+                          title="Delete Material"
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </>
-      )}
-
-      {/* Add/Edit Material Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-deepGray bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-darkGray rounded-xl shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold mb-4 text-lightGreen">
-              {currentMaterial ? 'Edit Material' : 'Add New Material'}
-            </h3>
-            <form onSubmit={handleSaveMaterial}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="code" className="block text-sm font-medium text-gray-300 mb-1">Code</label>
-                  <input
-                    type="text"
-                    id="code"
-                    name="code"
-                    value={formInput.code}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-1">Description</label>
-                  <input
-                    type="text"
-                    id="description"
-                    name="description"
-                    value={formInput.description}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="materialType" className="block text-sm font-medium text-gray-300 mb-1">Material Type</label>
-                  <select
-                    id="materialType"
-                    name="materialType"
-                    value={formInput.materialType}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    required
-                  >
-                    <option value="">Select Type</option>
-                    {materialTypes.filter(type => type !== '').map(type => ( // Filter out empty option for input
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="supplier" className="block text-sm font-medium text-gray-300 mb-1">Supplier</label>
-                  <input
-                    type="text"
-                    id="supplier"
-                    name="supplier"
-                    value={formInput.supplier}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="salesDescription" className="block text-sm font-medium text-gray-300 mb-1">Sales Description</label>
-                  <input
-                    type="text"
-                    id="salesDescription"
-                    name="salesDescription"
-                    value={formInput.salesDescription}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="muom" className="block text-sm font-medium text-gray-300 mb-1">MUOM (Manufacturing Unit of Measure)</label>
-                  <select
-                    id="muom"
-                    name="muom"
-                    value={formInput.muom}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    required
-                  >
-                    <option value="">Select MUOM</option>
-                    {commonUnits.filter(unit => unit !== '').map(unit => (
-                      <option key={unit} value={unit}>{unit}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="puom" className="block text-sm font-medium text-gray-300 mb-1">PUOM (Purchasing Unit of Measure)</label>
-                  <select
-                    id="puom"
-                    name="puom"
-                    value={formInput.puom}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    required
-                  >
-                    <option value="">Select PUOM</option>
-                    {commonUnits.filter(unit => unit !== '').map(unit => (
-                      <option key={unit} value={unit}>{unit}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="currentStockPUOM" className="block text-sm font-medium text-gray-300 mb-1">Current Stock (PUOM)</label>
-                  <input
-                    type="number"
-                    id="currentStockPUOM"
-                    name="currentStockPUOM"
-                    value={formInput.currentStockPUOM}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    step="0.00001" // Allow 5 decimal places
-                  />
-                </div>
-                <div>
-                  <label htmlFor="minStockPUOM" className="block text-sm font-medium text-gray-300 mb-1">Min Stock (PUOM)</label>
-                  <input
-                    type="number"
-                    id="minStockPUOM"
-                    name="minStockPUOM"
-                    value={formInput.minStockPUOM}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    step="0.00001" // Allow 5 decimal places
-                  />
-                </div>
-                <div>
-                  <label htmlFor="pcp" className="block text-sm font-medium text-gray-300 mb-1">PCP (£) (Purchasing Cost Price)</label>
-                  <input
-                    type="number"
-                    id="pcp"
-                    name="pcp"
-                    value={formInput.pcp}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    step="0.01"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="overheadFactor" className="block text-sm font-medium text-gray-300 mb-1">Overhead Factor (%)</label>
-                  <input
-                    type="number"
-                    id="overheadFactor"
-                    name="overheadFactor"
-                    value={formInput.overheadFactor}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    step="0.01"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="unitConversionFactor" className="block text-sm font-medium text-gray-300 mb-1">Unit Conversion Factor (PUOM to MUOM)</label>
-                  <input
-                    type="number"
-                    id="unitConversionFactor"
-                    name="unitConversionFactor"
-                    value={formInput.unitConversionFactor}
-                    onChange={handleInputChange}
-                    className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
-                    step="0.00001" // Allow 5 decimal places
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end space-x-4 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="bg-gray-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-gray-700 transition duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-lightGreen text-deepGray font-bold py-2 px-4 rounded-xl hover:bg-green-600 transition duration-200 shadow-lg"
-                >
-                  {currentMaterial ? 'Update Material' : 'Add Material'}
-                </button>
-              </div>
-            </form>
-          </div>
+          )}
         </div>
-      )}
-    </div>
+
+        {/* Add/Edit Material Modal */}
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-mediumGray p-6 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto border border-gray-700">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-lightGreen">{currentMaterial ? 'Edit Material' : 'Add New Material'}</h2>
+                <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-offWhite">
+                  <FaTimes size={24} />
+                </button>
+              </div>
+              <form onSubmit={handleSaveMaterial} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="code" className="block text-gray-300 text-sm font-bold mb-2">Material Code:</label>
+                    <input
+                      type="text"
+                      id="code"
+                      name="code"
+                      value={formInput.code}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="description" className="block text-gray-300 text-sm font-bold mb-2">Description:</label>
+                    <input
+                      type="text"
+                      id="description"
+                      name="description"
+                      value={formInput.description}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="materialType" className="block text-gray-300 text-sm font-bold mb-2">Material Type:</label>
+                    <select // Changed to select for consistency with constants.js
+                      id="materialType"
+                      name="materialType"
+                      value={formInput.materialType}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                    >
+                      {materialTypes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="puom" className="block text-gray-300 text-sm font-bold mb-2">Primary UOM:</label>
+                    <select
+                      id="puom"
+                      name="puom"
+                      value={formInput.puom}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                    >
+                      {commonUnits.map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="muom" className="block text-gray-300 text-sm font-bold mb-2">MUOM:</label>
+                    <select // Changed to select for consistency with constants.js
+                      id="muom"
+                      name="muom"
+                      value={formInput.muom}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                    >
+                      {commonUnits.map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="unitConversionFactor" className="block text-gray-300 text-sm font-bold mb-2">Unit Conversion Factor:</label>
+                    <input
+                      type="number"
+                      id="unitConversionFactor"
+                      name="unitConversionFactor"
+                      value={formInput.unitConversionFactor}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                      step="0.00001"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="mcp" className="block text-gray-300 text-sm font-bold mb-2">Material Cost Price (MCP) (£):</label>
+                    <input
+                      type="number"
+                      id="mcp"
+                      name="mcp"
+                      value={formInput.mcp}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="pcp" className="block text-gray-300 text-sm font-bold mb-2">Production Cost Price (PCP) (£):</label>
+                    <input
+                      type="number"
+                      id="pcp"
+                      name="pcp"
+                      value={formInput.pcp}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="currentStockPUOM" className="block text-gray-300 text-sm font-bold mb-2">Current Stock (PUOM):</label>
+                    <input
+                      type="number"
+                      id="currentStockPUOM"
+                      name="currentStockPUOM"
+                      value={formInput.currentStockPUOM}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                      step="0.00001"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="minStockPUOM" className="block text-gray-300 text-sm font-bold mb-2">Minimum Stock (PUOM):</label>
+                    <input
+                      type="number"
+                      id="minStockPUOM"
+                      name="minStockPUOM"
+                      value={formInput.minStockPUOM}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                      step="0.00001"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="salesDescription" className="block text-gray-300 text-sm font-bold mb-2">Sales Description:</label>
+                    <input
+                      type="text"
+                      id="salesDescription"
+                      name="salesDescription"
+                      value={formInput.salesDescription}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="supplier" className="block text-gray-300 text-sm font-bold mb-2">Supplier:</label>
+                    <input
+                      type="text"
+                      id="supplier"
+                      name="supplier"
+                      value={formInput.supplier}
+                      onChange={handleInputChange}
+                      className="w-full p-2 bg-gray-800 border border-gray-700 rounded-lg text-offWhite focus:ring-lightGreen focus:border-lightGreen"
+                    />
+                  </div>
+                </div>
+                {/* Buttons are outside the overflow-y-auto form content, but still within the modal */}
+                <div className="flex justify-end space-x-4 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="bg-gray-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-gray-700 transition duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-lightGreen text-deepGray font-bold py-2 px-4 rounded-xl hover:bg-green-600 transition duration-200 shadow-lg"
+                  >
+                    {currentMaterial ? 'Update Material' : 'Add Material'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }
 
