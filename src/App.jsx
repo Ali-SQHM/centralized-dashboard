@@ -26,6 +26,12 @@
 // - Ensured the "Staff Login" button in the sidebar footer is only visible when `!currentUser`.
 // - Explicitly passed `navigateTo` to `AuthPage`.
 // - Hamburger button position remains `top-4 left-4`.
+// - **RESPONSIVENESS FIX**: Added `z-30` to the mobile sidebar overlay to ensure it covers content.
+// - **CRITICAL FIX (Desktop Gap)**: Changed the main content area's width calculation.
+//   Instead of `md:ml-64` or `md:pl-64`, it now uses `md:w-[calc(100%-16rem)]` when the
+//   sidebar is shown, explicitly setting its width to the remaining space. This is a
+//   more direct and often more reliable way to manage space in such layouts.
+//   When the sidebar is hidden, it uses `w-full`.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -362,124 +368,126 @@ function App() {
   // Determine if sidebar should be shown
   // Sidebar is hidden on AuthPage and InstantQuoteAppPage (unless logged in and authorized)
   const showSidebar = currentPage !== 'authPage' &&
-                      !(currentPage === 'instantQuote' && !isAuthorizedStaff);
+                       !(currentPage === 'instantQuote' && !isAuthorizedStaff);
 
   // Render the main application layout
+  console.log("App.jsx: App component rendering. showSidebar:", showSidebar);
+
   return (
     // Main container for the whole app, takes full screen height and is a flex row
     <div className="flex h-screen bg-darkGray text-offWhite font-inter">
-      {/* Conditional Sidebar Rendering */}
-      {showSidebar && (
+      {/* Desktop Sidebar - Always rendered but hidden on mobile or when showSidebar is false */}
+      <aside className={`hidden md:flex flex-col flex-shrink-0 bg-mediumGray w-64 p-4 shadow-lg overflow-y-auto transition-all duration-300 ease-in-out
+                     ${showSidebar ? '' : 'md:hidden'}`}>
+        <h1 className="text-3xl font-bold text-lightGreen mb-6 text-center">HM ERP</h1>
+        <nav className="flex-1">
+          <ul>
+            {/* Dashboard Link - Always visible for staff, not collapsible */}
+            {isAuthorizedStaff && (
+              <li className="mb-2">
+                <button
+                  onClick={() => navigateTo('internalDashboard')}
+                  className={`w-full text-left py-2 px-4 rounded-xl transition duration-200
+                    ${currentPage === 'internalDashboard' ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                >
+                  Dashboard
+                </button>
+              </li>
+            )}
+
+            {/* Department-based Navigation */}
+            {departments.map((department) => (
+              <li key={department.name} className="mb-2">
+                <button
+                  onClick={() => toggleDepartment(department.name)}
+                  className="w-full text-left py-2 px-4 rounded-xl hover:bg-gray-700 flex items-center justify-between"
+                >
+                  <span className="flex items-center">
+                    <department.icon className="mr-2" />
+                    {department.name}
+                  </span>
+                  {expandedDepartments[department.name] ? <FaChevronUp /> : <FaChevronDown />}
+                </button>
+                {expandedDepartments[department.name] && (
+                  <ul className="ml-4 mt-2 border-l border-gray-600 pl-4">
+                    {department.pages.map((page) => {
+                      // Only show staffOnly pages to authorized staff
+                      if (page.staffOnly && !isAuthorizedStaff) {
+                        return null;
+                      }
+                      return (
+                        <li key={page.path} className="mb-1">
+                          {page.external ? (
+                            <a
+                              href={page.path}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full text-left py-1 px-2 rounded-xl text-sm hover:bg-gray-700 flex items-center"
+                            >
+                              <page.icon className="mr-2" />
+                              {page.name} <FaLink className="ml-auto text-xs" />
+                            </a>
+                          ) : (
+                            <button
+                              onClick={() => navigateTo(page.path)}
+                              className={`w-full text-left py-1 px-2 rounded-xl text-sm transition duration-200 flex items-center
+                                ${currentPage === page.path ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
+                            >
+                              <page.icon className="mr-2" />
+                              {page.name}
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* Staff Login/Logout in sidebar */}
+        <div className="mt-auto p-4 border-t border-gray-700">
+          {isAuthReady && currentUser ? (
+            <>
+              <p className="text-sm text-gray-400 mb-2">Logged in as: {currentUser.displayName || currentUser.email}</p>
+              <button
+                onClick={handleSignOut}
+                className="w-full bg-red-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-red-700 transition duration-200 shadow-lg flex items-center justify-center"
+              >
+                <FaRightFromBracket className="mr-2" /> Sign Out
+              </button>
+            </>
+          ) : (
+            // Only show Staff Login button if not currently logged in
+            isAuthReady && !currentUser && (
+              <>
+                <p className="text-sm text-gray-400 mb-2">Not logged in.</p>
+                <button
+                  onClick={() => navigateTo('authPage')}
+                  className="w-full bg-blue-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
+                >
+                  <FaGoogle className="mr-2" /> Staff Login
+                </button>
+              </>
+            )
+          )}
+        </div>
+      </aside>
+
+      {/* Mobile Sidebar Toggle Button (Hamburger) */}
+      {/* Positioned top-4 left-4 */}
+      <button
+        className="md:hidden fixed top-4 left-4 z-40 bg-mediumGray p-3 rounded-full shadow-lg text-lightGreen"
+        onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+      >
+        {isMobileSidebarOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
+      </button>
+
+      {/* Mobile Sidebar (Conditional visibility) */}
+      {showSidebar && ( // This fragment only renders if showSidebar is true
         <>
-          {/* Desktop Sidebar */}
-          <aside className={`hidden md:flex flex-col flex-shrink-0 bg-mediumGray w-64 p-4 shadow-lg overflow-y-auto transition-all duration-300 ease-in-out`}>
-            <h1 className="text-3xl font-bold text-lightGreen mb-6 text-center">HM ERP</h1>
-            <nav className="flex-1">
-              <ul>
-                {/* Dashboard Link - Always visible for staff, not collapsible */}
-                {isAuthorizedStaff && (
-                  <li className="mb-2">
-                    <button
-                      onClick={() => navigateTo('internalDashboard')}
-                      className={`w-full text-left py-2 px-4 rounded-xl transition duration-200
-                        ${currentPage === 'internalDashboard' ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
-                    >
-                      Dashboard
-                    </button>
-                  </li>
-                )}
-
-                {/* Department-based Navigation */}
-                {departments.map((department) => (
-                  <li key={department.name} className="mb-2">
-                    <button
-                      onClick={() => toggleDepartment(department.name)}
-                      className="w-full text-left py-2 px-4 rounded-xl hover:bg-gray-700 flex items-center justify-between"
-                    >
-                      <span className="flex items-center">
-                        <department.icon className="mr-2" />
-                        {department.name}
-                      </span>
-                      {expandedDepartments[department.name] ? <FaChevronUp /> : <FaChevronDown />}
-                    </button>
-                    {expandedDepartments[department.name] && (
-                      <ul className="ml-4 mt-2 border-l border-gray-600 pl-4">
-                        {department.pages.map((page) => {
-                          // Only show staffOnly pages to authorized staff
-                          if (page.staffOnly && !isAuthorizedStaff) {
-                            return null;
-                          }
-                          return (
-                            <li key={page.path} className="mb-1">
-                              {page.external ? (
-                                <a
-                                  href={page.path}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="w-full text-left py-1 px-2 rounded-xl text-sm hover:bg-gray-700 flex items-center"
-                                >
-                                  <page.icon className="mr-2" />
-                                  {page.name} <FaLink className="ml-auto text-xs" />
-                                </a>
-                              ) : (
-                                <button
-                                  onClick={() => navigateTo(page.path)}
-                                  className={`w-full text-left py-1 px-2 rounded-xl text-sm transition duration-200 flex items-center
-                                    ${currentPage === page.path ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
-                                >
-                                  <page.icon className="mr-2" />
-                                  {page.name}
-                                </button>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </nav>
-
-            {/* Staff Login/Logout in sidebar */}
-            <div className="mt-auto p-4 border-t border-gray-700">
-              {isAuthReady && currentUser ? (
-                <>
-                  <p className="text-sm text-gray-400 mb-2">Logged in as: {currentUser.displayName || currentUser.email}</p>
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full bg-red-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-red-700 transition duration-200 shadow-lg flex items-center justify-center"
-                  >
-                    <FaRightFromBracket className="mr-2" /> Sign Out
-                  </button>
-                </>
-              ) : (
-                // Only show Staff Login button if not currently logged in
-                isAuthReady && !currentUser && (
-                  <>
-                    <p className="text-sm text-gray-400 mb-2">Not logged in.</p>
-                    <button
-                      onClick={() => navigateTo('authPage')}
-                      className="w-full bg-blue-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
-                    >
-                      <FaGoogle className="mr-2" /> Staff Login
-                    </button>
-                  </>
-                )
-              )}
-            </div>
-          </aside>
-
-          {/* Mobile Sidebar Toggle Button (Hamburger) */}
-          {/* Positioned top-4 left-4 */}
-          <button
-            className="md:hidden fixed top-4 left-4 z-40 bg-mediumGray p-3 rounded-full shadow-lg text-lightGreen"
-            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-          >
-            {isMobileSidebarOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
-          </button>
-
-          {/* Mobile Sidebar (Conditional visibility) */}
           <aside className={`fixed inset-y-0 left-0 bg-mediumGray w-64 p-4 shadow-lg z-40 transform transition-transform duration-300 ease-in-out md:hidden
             ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
             <div className="flex justify-end mb-4">
@@ -586,125 +594,6 @@ function App() {
               )}
             </div>
           </aside>
-
-          {/* Mobile Sidebar Toggle Button (Hamburger) */}
-          {/* Positioned top-4 left-4 */}
-          <button
-            className="md:hidden fixed top-4 left-4 z-40 bg-mediumGray p-3 rounded-full shadow-lg text-lightGreen"
-            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-          >
-            {isMobileSidebarOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
-          </button>
-
-          {/* Mobile Sidebar (Conditional visibility) */}
-          <aside className={`fixed inset-y-0 left-0 bg-mediumGray w-64 p-4 shadow-lg z-40 transform transition-transform duration-300 ease-in-out md:hidden
-            ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-            <div className="flex justify-end mb-4">
-              <button
-                className="text-offWhite"
-                onClick={() => setIsMobileSidebarOpen(false)}
-              >
-                <FaTimes size={24} />
-              </button>
-            </div>
-            <h1 className="text-3xl font-bold text-lightGreen mb-6 text-center">HM ERP</h1>
-            <nav className="flex-1 overflow-y-auto">
-              <ul>
-                {/* Dashboard Link - Always visible for staff, not collapsible */}
-                {isAuthorizedStaff && (
-                  <li className="mb-2">
-                    <button
-                      onClick={() => navigateTo('internalDashboard')}
-                      className={`w-full text-left py-2 px-4 rounded-xl transition duration-200
-                        ${currentPage === 'internalDashboard' ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
-                    >
-                      Dashboard
-                    </button>
-                  </li>
-                )}
-
-                {/* Department-based Navigation */}
-                {departments.map((department) => (
-                  <li key={department.name} className="mb-2">
-                    <button
-                      onClick={() => toggleDepartment(department.name)}
-                      className="w-full text-left py-2 px-4 rounded-xl hover:bg-gray-700 flex items-center justify-between"
-                    >
-                      <span className="flex items-center">
-                        <department.icon className="mr-2" />
-                        {department.name}
-                      </span>
-                      {expandedDepartments[department.name] ? <FaChevronUp /> : <FaChevronDown />}
-                    </button>
-                    {expandedDepartments[department.name] && (
-                      <ul className="ml-4 mt-2 border-l border-gray-600 pl-4">
-                        {department.pages.map((page) => {
-                          // Only show staffOnly pages to authorized staff
-                          if (page.staffOnly && !isAuthorizedStaff) {
-                            return null;
-                          }
-                          return (
-                            <li key={page.path} className="mb-1">
-                              {page.external ? (
-                                <a
-                                  href={page.path}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="w-full text-left py-1 px-2 rounded-xl text-sm hover:bg-gray-700 flex items-center"
-                                >
-                                  <page.icon className="mr-2" />
-                                  {page.name} <FaLink className="ml-auto text-xs" />
-                                </a>
-                              ) : (
-                                <button
-                                  onClick={() => navigateTo(page.path)}
-                                  className={`w-full text-left py-1 px-2 rounded-xl text-sm transition duration-200 flex items-center
-                                    ${currentPage === page.path ? 'bg-lightGreen text-deepGray font-bold' : 'hover:bg-gray-700'}`}
-                                >
-                                  <page.icon className="mr-2" />
-                                  {page.name}
-                                </button>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </nav>
-
-            {/* Staff Login/Logout in sidebar */}
-            <div className="mt-auto p-4 border-t border-gray-700">
-              {isAuthReady && currentUser ? (
-                <>
-                  <p className="text-sm text-gray-400 mb-2">Logged in as: {currentUser.displayName || currentUser.email}</p>
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full bg-red-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-red-700 transition duration-200 shadow-lg flex items-center justify-center"
-                  >
-                    <FaRightFromBracket className="mr-2" /> Sign Out
-                  </button>
-                </>
-              ) : (
-                // Only show Staff Login button if not currently logged in
-                isAuthReady && !currentUser && (
-                  <>
-                    <p className="text-sm text-gray-400 mb-2">Not logged in.</p>
-                    <button
-                      onClick={() => navigateTo('authPage')}
-                      className="w-full bg-blue-600 text-offWhite font-bold py-2 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg flex items-center justify-center"
-                    >
-                      <FaGoogle className="mr-2" /> Staff Login
-                    </button>
-                  </>
-                )
-              )}
-            </div>
-          </aside>
-
-          {/* Overlay for mobile sidebar */}
           {isMobileSidebarOpen && (
             <div
               className="fixed inset-0 bg-black opacity-50 z-30 md:hidden"
@@ -714,18 +603,21 @@ function App() {
         </>
       )}
 
-      {/* Main Content Area - flex-1 to take remaining horizontal space, flex-col for vertical layout */}
-      {/* Simplified margin logic for desktop, relying on flexbox for positioning */}
-      <main className={`flex-1 p-6 flex flex-col transition-all duration-300 ease-in-out\
-                       ${showSidebar ? 'md:ml-0' : 'md:ml-0'} ml-0`}> {/* Removed explicit md:ml-64 */}
-        <div className="flex-1 overflow-y-auto">
+      {/* Main Content Area Wrapper - This div will manage the desktop width and overall horizontal overflow */}
+      {/* CRITICAL FIX (Desktop Gap): Using calc() for width when sidebar is shown on desktop. */}
+      {/* When sidebar is hidden, it's w-full. */}
+      <div className={`flex flex-col flex-1 overflow-y-auto overflow-x-hidden min-w-0 transition-all duration-300 ease-in-out
+                       ${showSidebar ? 'md:w-[calc(100%-16rem)]' : 'md:w-full'} w-full`}> {/* w-64 is 16rem */}
+        {/* The actual main content area */}
+        <main className="flex-1 p-6 flex flex-col">
           {renderMainContentPage()}
-        </div>
-        {/* Footer - Moved outside the flex-grow content div to ensure it's always at the bottom */}
+        </main>
+
+        {/* Footer - Always at the bottom of the main content wrapper */}
         <footer className="w-full bg-mediumGray text-gray-400 text-center py-3 text-sm flex-shrink-0 border-t border-gray-700">
           <p>&copy; {new Date().getFullYear()} HM ERP. All rights reserved.</p>
         </footer>
-      </main>
+      </div>
 
     </div>
   );
